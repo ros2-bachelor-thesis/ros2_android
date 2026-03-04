@@ -153,28 +153,68 @@ The APK is produced at `app/build/outputs/apk/debug/app-debug.apk`.
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## Development tips
+## Debug
 
-Use logcat to view the logs from the app
-```
-adb logcat
-```
+### Installing via ADB
 
-Sometimes you may want to try out a permission without writing the code to request it.
-The app must be installed, but not running already for this command to work.
-```
-adb shell pm grant com.github.sloretz.sensors_for_ros android.permission.CAMERA
+Install the debug APK directly to a connected device:
+
+```bash
+adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The main activity can be started directly from the CLI
+To reinstall (keeping app data):
+
+```bash
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
+
+Start the app from the command line:
+
+```bash
 adb shell am start -n com.github.sloretz.sensors_for_ros/.MainActivity
 ```
 
-Getting stack traces
+### Logging
 
+View all logs with color output:
+
+```bash
+adb logcat -v color
 ```
+
+Filter logs to only this app:
+
+```bash
+adb logcat -v color --pid=$(adb shell pidof -s com.github.sloretz.sensors_for_ros)
+```
+
+Clear the log buffer before a run:
+
+```bash
+adb logcat -c && adb logcat -v color --pid=$(adb shell pidof -s com.github.sloretz.sensors_for_ros)
+```
+
+Save logs to a file:
+
+```bash
+adb logcat -v time > logcat.txt
+```
+
+### Native stack traces
+
+Symbolicate native crashes using ndk-stack:
+
+```bash
 adb logcat | $ANDROID_HOME/ndk/*/ndk-stack -sym build/jniLibs/arm64-v8a/
+```
+
+### Granting permissions
+
+Grant a permission without writing the request code (app must be installed but not running):
+
+```bash
+adb shell pm grant com.github.sloretz.sensors_for_ros android.permission.CAMERA
 ```
 
 # Random lessons
