@@ -1,2 +1,11 @@
 build
 deps
+
+# Gradle
+.gradle/
+local.properties
+app/build/
+
+# IDE
+.idea/
+*.iml

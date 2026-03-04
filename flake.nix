@@ -22,8 +22,8 @@
         androidComposition = pkgs.androidenv.composeAndroidPackages {
           cmdLineToolsVersion = "8.0";
           platformToolsVersion = "35.0.2";
-          buildToolsVersions = [ "33.0.2" ];
-          platformVersions = [ "33" ];
+          buildToolsVersions = [ "33.0.2" "34.0.0" ];
+          platformVersions = [ "33" "34" ];
           includeEmulator = false;
           includeSystemImages = false;
           includeSources = false;
@@ -57,8 +57,11 @@
           # Python with ROS 2 build dependencies
           pythonEnv
 
-          # JDK for keytool (debug keystore) and apksigner
+          # JDK for keytool (debug keystore), apksigner, and Gradle
           jdk17
+
+          # Gradle for Kotlin/APK build
+          gradle
 
           # Build tools (cmake comes from Android SDK at 3.22.1)
           gnumake
@@ -83,9 +86,15 @@
           ANDROID_HOME = "${androidSdk}/libexec/android-sdk";
           ANDROID_SDK_ROOT = "${androidSdk}/libexec/android-sdk";
 
+          JAVA_HOME = "${pkgs.jdk17}";
+
           shellHook = ''
             # Use Android SDK's CMake 3.22.1 (CMake 4.x breaks old cmake_minimum_required)
             export PATH="${androidSdk}/libexec/android-sdk/cmake/3.22.1/bin:$PATH"
+
+            # Always regenerate local.properties (SDK path changes with each Nix rebuild)
+            echo "sdk.dir=$ANDROID_HOME" > local.properties
+
             echo "ROS 2 Android build environment"
             echo "  CMake: $(cmake --version | head -1)"
             echo "  NDK: 25.1.8937393 (arm64-v8a)"

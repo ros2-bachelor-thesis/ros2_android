@@ -2,12 +2,10 @@
 
 #include <EGL/egl.h>
 #include <GLES/gl.h>
-#include <android/input.h>
-#include <android/native_activity.h>
+#include <android/native_window.h>
 
 #include <atomic>
 #include <future>
-#include <mutex>
 #include <thread>
 
 #include "controller.h"
@@ -19,11 +17,10 @@ class GUI {
   GUI();
   ~GUI();
 
-  void Start(ANativeActivity* activity, ANativeWindow* window);
+  void Start(ANativeWindow* window);
   void Stop();
 
-  void SetInputQueue(AInputQueue* queue);
-  void RemoveInputQueue();
+  void HandleTouchEvent(int32_t action, float x, float y, int32_t tool_type);
 
   void SetController(Controller* controller);
 
@@ -36,7 +33,6 @@ class GUI {
   void ShowROSDomainIdPicker();
   void DrawingLoop(ANativeWindow* window,
                    std::promise<void> promise_first_frame);
-  void CheckInput();
 
   EGLDisplay display_;
   EGLSurface surface_;
@@ -46,11 +42,6 @@ class GUI {
 
   std::thread draw_thread_;
   std::atomic<bool> exit_loop_;
-
-  std::mutex iqueue_mtx_;
-  AInputQueue* iqueue_ = nullptr;
-
-  ANativeActivity* activity_;
 
   Controller* active_controller = nullptr;
 };

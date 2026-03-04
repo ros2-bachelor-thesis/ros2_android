@@ -1,8 +1,8 @@
 #pragma once
 
-#include <android/native_activity.h>
 #include <android/sensor.h>
 
+#include <string>
 #include <vector>
 
 #include "events.h"
@@ -13,7 +13,7 @@
 namespace sensors_for_ros {
 class Sensors {
  public:
-  Sensors(ANativeActivity* activity);
+  Sensors(const std::string& package_name);
   ~Sensors() = default;
 
   void Initialize();

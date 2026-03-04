@@ -3,23 +3,21 @@
 #include "controller.h"
 #include "events.h"
 
-#include <android/native_activity.h>
-
 #include <string>
 #include <vector>
 
 namespace sensors_for_ros {
 
-// There should only be one of these in existance.
 constexpr const char* kRosDomainIdControllerId = "ros_domain_id_controller";
 
 class RosDomainIdController : public Controller,
                               public event::Emitter<event::RosDomainIdChanged> {
  public:
-  RosDomainIdController(ANativeActivity* activity);
+  RosDomainIdController();
   virtual ~RosDomainIdController(){};
 
-  // Called by the GUI to draw a frame
+  void SetNetworkInterfaces(std::vector<std::string> interfaces);
+
   void DrawFrame() override;
 
   std::string PrettyName() const override { return "ROS Domain ID"; }

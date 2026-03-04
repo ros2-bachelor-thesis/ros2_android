@@ -1,6 +1,5 @@
 #include "sensors.h"
 
-#include "jvm.h"
 #include "log.h"
 #include "sensors/accelerometer_sensor.h"
 #include "sensors/barometer_sensor.h"
@@ -16,9 +15,7 @@ using sensors_for_ros::MagnetometerSensor;
 using sensors_for_ros::SensorDescriptor;
 using sensors_for_ros::Sensors;
 
-Sensors::Sensors(ANativeActivity* activity) {
-  // TODO(sloretz) Query sensors
-  std::string package_name = GetPackageName(activity);
+Sensors::Sensors(const std::string& package_name) {
   sensor_manager_ = ASensorManager_getInstanceForPackage(package_name.c_str());
 
   auto descriptors = QuerySensors();

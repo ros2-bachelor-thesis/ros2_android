@@ -29,46 +29,27 @@ void GUI::DrawingLoop(ANativeWindow* window,
   promise_first_frame.set_value();
 
   while (not exit_loop_.load()) {
-    CheckInput();
     DrawFrame();
   }
   TerminateDearImGui();
   TerminateDisplay();
 }
 
-void GUI::CheckInput() {
-  std::unique_lock<std::mutex> lock(iqueue_mtx_, std::defer_lock);
-  // Try to get input events, but don't worry about if it doesn't happen
-  if (!lock.try_lock()) {
-    return;
-  }
-  if (iqueue_ == nullptr) {
-    return;
-  }
-  AInputEvent* event = nullptr;
-  while (AInputQueue_getEvent(iqueue_, &event) >= 0) {
-    LOGI("New input event: type=%d\n", AInputEvent_getType(event));
-    if (AInputQueue_preDispatchEvent(iqueue_, event)) {
-      continue;
-    }
-    int32_t handled = 0;
-    handled = ImGui_ImplAndroid_HandleInputEvent(event);
-    AInputQueue_finishEvent(iqueue_, event, handled);
+void GUI::HandleTouchEvent(int32_t action, float x, float y,
+                           int32_t tool_type) {
+  ImGuiIO& io = ImGui::GetIO();
+
+  io.AddMousePosEvent(x, y);
+
+  // ACTION_DOWN = 0, ACTION_UP = 1
+  if (action == 0) {
+    io.AddMouseButtonEvent(0, true);
+  } else if (action == 1) {
+    io.AddMouseButtonEvent(0, false);
   }
 }
 
-void GUI::SetInputQueue(AInputQueue* queue) {
-  std::lock_guard<std::mutex> guard(iqueue_mtx_);
-  iqueue_ = queue;
-}
-
-void GUI::RemoveInputQueue() {
-  std::lock_guard<std::mutex> guard(iqueue_mtx_);
-  iqueue_ = nullptr;
-}
-
-void GUI::Start(ANativeActivity* activity, ANativeWindow* window) {
-  activity_ = activity;
+void GUI::Start(ANativeWindow* window) {
   exit_loop_.store(false);
   std::promise<void> promise_first_frame;
   std::future<void> first_frame_drawn = promise_first_frame.get_future();
@@ -83,7 +64,6 @@ void GUI::Stop() {
     exit_loop_.store(true);
     draw_thread_.join();
   }
-  activity_ = nullptr;
 }
 
 bool GUI::InitializeDisplay(ANativeWindow* window) {

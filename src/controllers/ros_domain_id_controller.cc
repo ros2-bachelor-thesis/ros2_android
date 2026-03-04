@@ -1,17 +1,20 @@
 #include "controllers/ros_domain_id_controller.h"
 
 #include "imgui.h"
-#include "jvm.h"
 
 namespace sensors_for_ros {
 
-RosDomainIdController::RosDomainIdController(ANativeActivity* activity) : Controller(kRosDomainIdControllerId)
-{
-  network_interfaces_ = sensors_for_ros::GetNetworkInterfaces(activity);
+RosDomainIdController::RosDomainIdController()
+    : Controller(kRosDomainIdControllerId) {}
 
+void RosDomainIdController::SetNetworkInterfaces(
+    std::vector<std::string> interfaces) {
+  network_interfaces_ = std::move(interfaces);
+
+  preferred_interface_.clear();
   if (network_interfaces_.size()) {
     preferred_interface_ = *network_interfaces_.begin();
-    for (const auto& interface: network_interfaces_) {
+    for (const auto& interface : network_interfaces_) {
       if (interface.rfind("wlan", 0) == 0) {
         preferred_interface_ = interface;
         break;

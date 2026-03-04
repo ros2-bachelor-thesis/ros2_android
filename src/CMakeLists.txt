@@ -26,7 +26,7 @@ target_link_libraries(imgui PUBLIC
     GLESv3)
 
 add_library(android-ros SHARED
-  android_entry_point.cc
+  jni_bridge.cc
   camera_descriptor.cc
   camera_device.cc
   camera_manager.cc
@@ -59,7 +59,6 @@ target_link_libraries(android-ros PRIVATE
     rclcpp::rclcpp
     ${geometry_msgs_TARGETS}
     ${sensor_msgs_TARGETS})
-target_link_options(android-ros PRIVATE -u ANativeActivity_onCreate)
 target_include_directories(android-ros PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 # LTO to reduce APK size
