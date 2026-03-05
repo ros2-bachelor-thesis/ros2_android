@@ -118,7 +118,7 @@ Follow the [Set up a device for development](https://developer.android.com/studi
 
 ```bash
 mkdir -p ~/.android
-keytool -genkey -v -keystore ~/.android/debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android
+keytool -genkey -v -keystore ~/.android/debug.keystore -alias adb_debug_key -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android
 ```
 
 ### Clone the repo

@@ -18,7 +18,8 @@ DEPS_STAMP := $(DEPS_DIR)/.deps-fetched
 NATIVE_STAMP := $(BUILD_DIR)/.native-built
 APK_STAMP := app/build/.apk-built
 
-.PHONY: all native app clean clean-app clean-native clean-deps help install
+.PHONY: all native app clean clean-app clean-native clean-deps help \
+       setup-debug install run logcat
 
 # ============================================================================
 # Main targets
@@ -63,10 +64,33 @@ $(APK_STAMP): $(NATIVE_STAMP) $(shell find app/src -type f 2>/dev/null) app/buil
 # Utility targets
 # ============================================================================
 
+## Verify a device is connected and ready for debugging
+setup-debug:
+	@echo "==> Checking for connected Android device..."
+	@adb devices | grep -q 'device$$' || \
+		(echo "ERROR: No device found. Enable USB debugging and connect your phone." && exit 1)
+	@echo "==> Device found:"
+	@adb devices -l | grep 'device ' | head -1
+	@echo "==> Android version: $$(adb shell getprop ro.build.version.release)"
+	@echo "==> ABI: $$(adb shell getprop ro.product.cpu.abi)"
+	@echo "==> Device ready for deployment"
+
 ## Install APK to connected device
-install: $(APK_STAMP)
+install: setup-debug $(APK_STAMP)
 	@echo "==> Installing APK to device..."
 	adb install -r $(APK_OUTPUT)
+	@echo "==> Installed successfully"
+
+## Build, install, and launch app on device
+run: install
+	@echo "==> Launching app..."
+	adb shell am start -n com.github.sloretz.sensors_for_ros/.MainActivity
+	@echo "==> App launched"
+
+## Tail device logs filtered to the app
+logcat:
+	adb logcat --pid=$$(adb shell pidof com.github.sloretz.sensors_for_ros) 2>/dev/null \
+		|| adb logcat -s "sensors_for_ros"
 
 ## Clean everything
 clean: clean-native clean-app
@@ -99,7 +123,10 @@ help:
 	@echo "  deps         Fetch git submodules + ROS 2 source deps"
 	@echo "  native       Build native ROS 2 dependencies only"
 	@echo "  app          Build Android APK only (requires native)"
-	@echo "  install      Install APK to connected device"
+	@echo "  setup-debug  Verify device is connected and ready"
+	@echo "  install      Build + install APK to connected device"
+	@echo "  run          Build, install, and launch app on device"
+	@echo "  logcat       Tail device logs filtered to the app"
 	@echo "  clean        Clean build artifacts (keeps deps)"
 	@echo "  clean-app    Clean app build only (keeps native)"
 	@echo "  clean-native Clean native build (full rebuild needed)"
