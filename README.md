@@ -32,19 +32,37 @@ You do not need ROS installed on your machine to build the **Sensors for ROS** a
 However, it's needed to use the sensor data being published by your Android device.
 Follow [these instructions to install ROS Humble](https://docs.ros.org/en/humble/Installation.html).
 
-### Computer setup (Nix)
+### Dependencies
 
-If you have [Nix](https://nixos.org/) with flakes enabled, the dev environment is a single command:
+The following dependencies are required to build this app:
 
-```bash
-nix develop
-```
+**Android SDK Components:**
+- Android SDK Command-line Tools (version 8.0)
+- Platform Tools (version 35.0.2)
+- Build Tools (version 33.0.2 or 34.0.0)
+- Android Platform API 33 (Android 13)
+- NDK 25.1.8937393
+- CMake 3.22.1
 
-This provides the Android SDK (API 33, NDK 25.1, build-tools 33.0.2), Gradle, JDK 17, Python with ROS 2 build deps, and all other tools. It also generates `local.properties` for Gradle automatically.
+**Build Tools:**
+- JDK 17 (for Gradle and keytool)
+- Gradle (for Kotlin/APK build)
+- make
+- zip/unzip
+- git
+- adb (Android Debug Bridge)
 
-Skip to [Clone the repo](#clone-the-repo).
+**Python Packages:**
+- catkin-pkg (ROS 2 build dependency)
+- empy 3.x (ROS 2 requires 3.x, not 4.x)
+- lark-parser
+- pip
+- setuptools
 
-### Computer setup (manual)
+**ROS 2 Tools:**
+- vcstool (for managing ROS 2 package repositories)
+
+### Computer setup
 
 Download the [Android SDK "Command-line tools only" version](https://developer.android.com/studio#command-tools).
 Other versions may work, but this is the minimum needed.
