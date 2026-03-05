@@ -1,34 +1,12 @@
 #pragma once
 
-#include <string>
-#include <variant>
+#include <functional>
 
 namespace sensors_for_ros {
 namespace event {
-// Event fired to indicate the ROS_DOMAIN_ID was set
-struct RosDomainIdChanged {
-  int32_t id;
-  std::string interface;
-};
-
 struct SensorEvent {
   // Sensor handle (ASensorEvent::sensor) uniquely identifying the sensor
   int handle;
-};
-
-// Indicates an illuminance sensor got a new reading
-struct IlluminanceChanged : SensorEvent {
-  // SI unit: lux (lx)
-  float light;
-};
-
-// Indicates a controller wants to exit back to the previous page
-struct GuiNavigateBack {};
-
-// Indicates a controller wants to display a specific sensor
-struct GuiNavigateTo {
-  // The unique ID of a controller to navigate to
-  std::string unique_id;
 };
 
 template <typename EventType>

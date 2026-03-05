@@ -36,21 +36,64 @@ This creates a two-stage build:
 
 The coupling point is the `jniLibs` directory. Gradle's `build.gradle.kts` references `${rootProject.projectDir}/build/jniLibs` as its JNI library source. If the CMake build hasn't run, Gradle will produce an APK without native code (no build error, just a runtime crash).
 
-## Input handling: AInputQueue vs direct touch forwarding
+## Replacing Dear ImGui with Jetpack Compose
 
-The original `GUI` class used `AInputQueue` to poll input events on the draw thread, routing them through `ImGui_ImplAndroid_HandleInputEvent`. This relied on the NativeActivity framework delivering events to a native queue.
+The first hybrid version used Dear ImGui (C++ immediate-mode GUI) for all UI rendering. A `SurfaceView` embedded in Compose via `AndroidView` passed its native window to a C++ EGL/OpenGL draw thread that ran ImGui. Touch events were forwarded from Kotlin to C++ via `nativeTouchEvent`.
 
-With a Kotlin Activity, touch events arrive as `MotionEvent` objects on the UI thread. These are forwarded to native code via JNI (`nativeTouchEvent`), where they're injected directly into ImGui's IO event queue using `ImGuiIO::AddMousePosEvent()` and `ImGuiIO::AddMouseButtonEvent()`.
+This was replaced with native Jetpack Compose screens. The motivation:
+- ImGui required maintaining a parallel OpenGL rendering pipeline alongside Compose
+- Touch forwarding between the UI thread and the draw thread was fragile
+- All future UI work (USB device dialogs, multicast controls) would need to be implemented in C++/ImGui rather than using standard Android components
+- The C++ draw thread, EGL context management, and ImGui font/scaling setup were unnecessary complexity
 
-This is safe because ImGui 1.87+ has a thread-safe IO event queue - touch events arrive on the UI thread while the draw loop runs on a separate thread. The `AInputQueue` mechanism, the `iqueue_mtx_` mutex, `CheckInput()`, `SetInputQueue()`, and `RemoveInputQueue()` were all removed.
+### Architecture change
 
-One subtlety: `MotionEvent.ACTION_DOWN` (0), `ACTION_UP` (1), and `ACTION_MOVE` (2) happen to have identical numeric values to the NDK `AMOTION_EVENT_ACTION_*` constants, so no translation is needed. However, this is a coincidence rather than a guaranteed API contract.
+```
+BEFORE: Kotlin SurfaceView -> C++ EGL/ImGui draw thread -> Controller.DrawFrame() -> ImGui
+AFTER:  Kotlin Compose screens <-> JNI data queries/commands <-> C++ data model
+```
 
-## Surface lifecycle mapping
+### What was removed
 
-The old `NativeActivity` callbacks `onNativeWindowCreated`/`onNativeWindowDestroyed` map directly to `SurfaceHolder.Callback.surfaceCreated`/`surfaceDestroyed`. The native window handle is obtained via `ANativeWindow_fromSurface(env, surface)` instead of being passed directly by the framework.
+- `gui.h/cc` - EGL display initialization, OpenGL rendering, ImGui setup/teardown, draw thread
+- `controller.h` - base class with `DrawFrame()` pure virtual
+- `display_topic.h` - ImGui helper template for rendering ROS topic info
+- `list_controller.{h,cc}` - ImGui sensor list with navigation events
+- `ros_domain_id_controller.{h,cc}` - ImGui numeric keypad and network interface dropdown
+- `src/DearImGui/` submodule - the ImGui library itself
+- `imgui` static library target from CMakeLists.txt, along with EGL/GLESv3 link dependencies
+- `nativeSurfaceCreated`, `nativeSurfaceDestroyed`, `nativeTouchEvent` JNI functions
+- GUI navigation event system (`GuiNavigateBack`, `GuiNavigateTo`, controller stack)
 
-The `SurfaceView` is embedded inside Jetpack Compose via `AndroidView`, which adds a layer of indirection. The surface lifecycle is tied to the Compose composition - if the `AndroidView` leaves the composition, the surface is destroyed.
+### What replaced it
+
+**C++ side:** A new `SensorDataProvider` base class replaces `Controller`. It keeps `UniqueId()` and `PrettyName()` but replaces `DrawFrame()` with `GetLastMeasurementJson()` and metadata accessors (`SensorName()`, `SensorVendor()`, `TopicName()`, `TopicType()`). Each sensor controller now protects its `last_msg_` with a `std::mutex` and serializes readings as JSON (e.g., `{"values":[x,y,z],"unit":"m/s^2"}`).
+
+**JNI bridge:** New functions return JSON strings for Kotlin to parse:
+- `nativeStartRos(domainId, networkInterface)` - replaces the `RosDomainIdChanged` event
+- `nativeGetSensorList()` - returns JSON array of sensor metadata
+- `nativeGetSensorData(uniqueId)` - returns latest measurement as JSON
+- `nativeGetCameraList()` - returns JSON array of camera metadata
+- `nativeEnableCamera(uniqueId)` / `nativeDisableCamera(uniqueId)`
+- `nativeGetNetworkInterfaces()` - returns stored interfaces as JSON array
+
+**Kotlin side:** A `RosViewModel` manages navigation state via a `Screen` sealed class and exposes `StateFlow`s for sensors, cameras, and the current reading. It polls `nativeGetSensorData()` at ~10 Hz (100ms delay) for the currently viewed sensor. Four Compose screens replace the four ImGui controllers: `DomainIdScreen`, `SensorListScreen`, `SensorDetailScreen`, `CameraDetailScreen`.
+
+### JSON over JNI
+
+Returning JSON strings from C++ avoids fragile `jobject` construction in JNI code. Parsing in Kotlin with `org.json` (already in the Android SDK) is trivial. Data volumes are tiny - a few sensors polled at 10 Hz, each returning a few hundred bytes of JSON.
+
+The alternative (constructing Java objects in C++ via `NewObject`/`SetObjectField`/`CallMethod`) would require looking up class and method IDs, managing local references, and handling exceptions - all for data that can be expressed as a short string.
+
+### Polling over callbacks
+
+The ViewModel polls `nativeGetSensorData()` at 10 Hz instead of C++ calling back into Kotlin. This avoids:
+- `AttachCurrentThread`/`DetachCurrentThread` for each callback from sensor threads
+- `NewGlobalRef` to prevent the Kotlin callback object from being GC'd
+- Thread safety concerns around which thread the callback arrives on
+- The complexity of the `Emitter` pattern crossing the JNI boundary
+
+Sensors still publish to ROS topics at their native rate regardless of the UI polling frequency. The polling only affects how often the UI updates its display.
 
 ## Removal of JNI-based Android API access
 
@@ -92,3 +135,12 @@ Similarly, `local.properties` (which points Gradle to the SDK) must be regenerat
 Gradle's default debug signing config expects the key alias `androiddebugkey`. The existing keystore (created for the old CMake/apksigner flow) used alias `adb_debug_key`. This caused `KeytoolException: Failed to read key AndroidDebugKey` at the `packageDebug` step.
 
 Fixed by adding an explicit `signingConfigs` block in `app/build.gradle.kts` that references the correct alias.
+
+## Compose version constraints
+
+The Kotlin compiler extension version (1.5.14) pins the Compose runtime. This constrains which Compose library versions are compatible:
+- `material3:1.1.2` - not 1.2+ (which introduces `HorizontalDivider`, replaces `Divider`)
+- `material-icons-extended:1.5.4` - not 1.6+ (which introduces `Icons.AutoMirrored`)
+- `lifecycle-viewmodel-compose:2.7.0` - provides `viewModel()` composable for Compose
+
+Using newer Compose APIs with older library versions causes `Unresolved reference` errors at compile time, not link time. The error messages are clear but the root cause (version mismatch) is not obvious unless you know which API was introduced in which version.

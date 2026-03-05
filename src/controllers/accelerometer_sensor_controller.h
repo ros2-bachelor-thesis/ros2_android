@@ -1,33 +1,36 @@
 #pragma once
 
 #include <geometry_msgs/msg/accel_stamped.hpp>
+#include <mutex>
 
-#include "controller.h"
-#include "events.h"
 #include "log.h"
 #include "ros_interface.h"
+#include "sensor_data_provider.h"
 #include "sensors/accelerometer_sensor.h"
 
 namespace sensors_for_ros {
-// Handles interface between sensor, ROS, and GUI
-class AccelerometerSensorController
-    : public Controller,
-      public event::Emitter<event::GuiNavigateBack> {
+
+class AccelerometerSensorController : public SensorDataProvider {
  public:
   AccelerometerSensorController(AccelerometerSensor* sensor, RosInterface& ros);
-
   virtual ~AccelerometerSensorController() = default;
 
-  void DrawFrame() override;
-
   std::string PrettyName() const override;
+  std::string GetLastMeasurementJson() override;
+
+  const char* SensorName() const override { return sensor_->Descriptor().name; }
+  const char* SensorVendor() const override { return sensor_->Descriptor().vendor; }
+  const char* TopicName() const override { return publisher_.Topic(); }
+  const char* TopicType() const override { return publisher_.Type(); }
 
  protected:
-  void OnSensorReading(const geometry_msgs::msg::AccelStamped& event);
+  void OnSensorReading(const geometry_msgs::msg::AccelStamped& msg);
 
  private:
+  std::mutex mutex_;
   geometry_msgs::msg::AccelStamped last_msg_;
   AccelerometerSensor* sensor_;
   Publisher<geometry_msgs::msg::AccelStamped> publisher_;
 };
+
 }  // namespace sensors_for_ros

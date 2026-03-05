@@ -1,34 +1,36 @@
 #pragma once
 
 #include <sensor_msgs/msg/illuminance.hpp>
+#include <mutex>
 
-#include "controller.h"
-#include "events.h"
 #include "log.h"
 #include "ros_interface.h"
+#include "sensor_data_provider.h"
 #include "sensors/illuminance_sensor.h"
 
 namespace sensors_for_ros {
-// Handles interface between sensor, ROS, and GUI
-class IlluminanceSensorController
-    : public Controller,
-      public event::Emitter<event::GuiNavigateBack> {
- public:
-  // TODO reference to GUI? Or maybe GUI has reference to this!
-  IlluminanceSensorController(IlluminanceSensor* sensor, RosInterface& ros);
 
+class IlluminanceSensorController : public SensorDataProvider {
+ public:
+  IlluminanceSensorController(IlluminanceSensor* sensor, RosInterface& ros);
   virtual ~IlluminanceSensorController() = default;
 
-  void DrawFrame() override;
-
   std::string PrettyName() const override;
+  std::string GetLastMeasurementJson() override;
+
+  const char* SensorName() const override { return sensor_->Descriptor().name; }
+  const char* SensorVendor() const override { return sensor_->Descriptor().vendor; }
+  const char* TopicName() const override { return publisher_.Topic(); }
+  const char* TopicType() const override { return publisher_.Type(); }
 
  protected:
-  void OnIlluminanceChanged(const sensor_msgs::msg::Illuminance& event);
+  void OnIlluminanceChanged(const sensor_msgs::msg::Illuminance& msg);
 
  private:
+  std::mutex mutex_;
   sensor_msgs::msg::Illuminance last_msg_;
   IlluminanceSensor* sensor_;
   Publisher<sensor_msgs::msg::Illuminance> publisher_;
 };
+
 }  // namespace sensors_for_ros

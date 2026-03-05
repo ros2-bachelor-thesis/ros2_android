@@ -1,33 +1,36 @@
 #pragma once
 
 #include <geometry_msgs/msg/twist_stamped.hpp>
+#include <mutex>
 
-#include "controller.h"
-#include "events.h"
 #include "log.h"
 #include "ros_interface.h"
+#include "sensor_data_provider.h"
 #include "sensors/gyroscope_sensor.h"
 
 namespace sensors_for_ros {
-// Handles interface between sensor, ROS, and GUI
-class GyroscopeSensorController
-    : public Controller,
-      public event::Emitter<event::GuiNavigateBack> {
+
+class GyroscopeSensorController : public SensorDataProvider {
  public:
   GyroscopeSensorController(GyroscopeSensor* sensor, RosInterface& ros);
-
   virtual ~GyroscopeSensorController() = default;
 
-  void DrawFrame() override;
-
   std::string PrettyName() const override;
+  std::string GetLastMeasurementJson() override;
+
+  const char* SensorName() const override { return sensor_->Descriptor().name; }
+  const char* SensorVendor() const override { return sensor_->Descriptor().vendor; }
+  const char* TopicName() const override { return publisher_.Topic(); }
+  const char* TopicType() const override { return publisher_.Type(); }
 
  protected:
-  void OnGyroReading(const geometry_msgs::msg::TwistStamped& event);
+  void OnGyroReading(const geometry_msgs::msg::TwistStamped& msg);
 
  private:
+  std::mutex mutex_;
   geometry_msgs::msg::TwistStamped last_msg_;
   GyroscopeSensor* sensor_;
   Publisher<geometry_msgs::msg::TwistStamped> publisher_;
 };
+
 }  // namespace sensors_for_ros

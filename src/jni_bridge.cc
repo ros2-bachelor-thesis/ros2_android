@@ -1,28 +1,24 @@
 #include <jni.h>
-#include <android/native_window_jni.h>
 
 #include <cstdlib>
 #include <fstream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
 #include "camera_descriptor.h"
 #include "camera_manager.h"
-#include "controller.h"
 #include "controllers/accelerometer_sensor_controller.h"
 #include "controllers/barometer_sensor_controller.h"
 #include "controllers/camera_controller.h"
 #include "controllers/gyroscope_sensor_controller.h"
 #include "controllers/illuminance_sensor_controller.h"
-#include "controllers/list_controller.h"
 #include "controllers/magnetometer_sensor_controller.h"
-#include "controllers/ros_domain_id_controller.h"
-#include "events.h"
-#include "gui.h"
 #include "jvm.h"
 #include "log.h"
 #include "ros_interface.h"
+#include "sensor_data_provider.h"
 #include "sensors.h"
 
 static JavaVM* g_jvm = nullptr;
@@ -32,18 +28,8 @@ class AndroidApp {
   AndroidApp(const std::string& cache_dir, const std::string& package_name)
       : cache_dir_(cache_dir),
         package_name_(package_name),
-        sensors_(package_name),
-        ros_domain_id_controller_() {
-    ros_domain_id_controller_.SetListener(std::bind(
-        &AndroidApp::OnRosDomainIdChanged, this, std::placeholders::_1));
-    PushController(&ros_domain_id_controller_);
-
-    list_controller_.SetListener(
-        std::bind(&AndroidApp::OnNavigateBack, this, std::placeholders::_1));
-    list_controller_.SetListener(
-        std::bind(&AndroidApp::OnNavigateTo, this, std::placeholders::_1));
-
-    LOGI("Initalizing Sensors");
+        sensors_(package_name) {
+    LOGI("Initializing Sensors");
     sensors_.Initialize();
 
     for (auto& sensor : sensors_.GetSensors()) {
@@ -52,16 +38,12 @@ class AndroidApp {
             std::make_unique<sensors_for_ros::IlluminanceSensorController>(
                 static_cast<sensors_for_ros::IlluminanceSensor*>(sensor.get()),
                 ros_);
-        controller->SetListener(std::bind(&AndroidApp::OnNavigateBack, this,
-                                          std::placeholders::_1));
         controllers_.emplace_back(std::move(controller));
       } else if (ASENSOR_TYPE_GYROSCOPE == sensor->Descriptor().type) {
         auto controller =
             std::make_unique<sensors_for_ros::GyroscopeSensorController>(
                 static_cast<sensors_for_ros::GyroscopeSensor*>(sensor.get()),
                 ros_);
-        controller->SetListener(std::bind(&AndroidApp::OnNavigateBack, this,
-                                          std::placeholders::_1));
         controllers_.emplace_back(std::move(controller));
       } else if (ASENSOR_TYPE_ACCELEROMETER == sensor->Descriptor().type) {
         auto controller =
@@ -69,30 +51,20 @@ class AndroidApp {
                 static_cast<sensors_for_ros::AccelerometerSensor*>(
                     sensor.get()),
                 ros_);
-        controller->SetListener(std::bind(&AndroidApp::OnNavigateBack, this,
-                                          std::placeholders::_1));
         controllers_.emplace_back(std::move(controller));
       } else if (ASENSOR_TYPE_PRESSURE == sensor->Descriptor().type) {
         auto controller =
             std::make_unique<sensors_for_ros::BarometerSensorController>(
                 static_cast<sensors_for_ros::BarometerSensor*>(sensor.get()),
                 ros_);
-        controller->SetListener(std::bind(&AndroidApp::OnNavigateBack, this,
-                                          std::placeholders::_1));
         controllers_.emplace_back(std::move(controller));
       } else if (ASENSOR_TYPE_MAGNETIC_FIELD == sensor->Descriptor().type) {
         auto controller =
             std::make_unique<sensors_for_ros::MagnetometerSensorController>(
                 static_cast<sensors_for_ros::MagnetometerSensor*>(sensor.get()),
                 ros_);
-        controller->SetListener(std::bind(&AndroidApp::OnNavigateBack, this,
-                                          std::placeholders::_1));
         controllers_.emplace_back(std::move(controller));
       }
-    }
-
-    for (const auto& controller : controllers_) {
-      list_controller_.AddController(controller.get());
     }
   }
 
@@ -109,68 +81,15 @@ class AndroidApp {
           camera_manager_.GetCameras();
       for (auto cam_desc : cameras) {
         LOGI("Camera: %s", cam_desc.GetName().c_str());
-        std::unique_ptr<sensors_for_ros::CameraController> camera_controller(
-            new sensors_for_ros::CameraController(&camera_manager_, cam_desc,
-                                                  ros_));
-        camera_controller->SetListener(std::bind(&AndroidApp::OnNavigateBack,
-                                                 this, std::placeholders::_1));
-        controllers_.emplace_back(std::move(camera_controller));
-        list_controller_.AddController(controllers_.back().get());
+        auto camera_controller =
+            std::make_unique<sensors_for_ros::CameraController>(
+                &camera_manager_, cam_desc, ros_);
+        camera_controllers_.emplace_back(std::move(camera_controller));
       }
     }
   }
 
-  std::string cache_dir_;
-  std::string package_name_;
-  sensors_for_ros::RosInterface ros_;
-  sensors_for_ros::Sensors sensors_;
-  sensors_for_ros::GUI gui_;
-
-  sensors_for_ros::RosDomainIdController ros_domain_id_controller_;
-  sensors_for_ros::ListController list_controller_;
-  std::vector<std::unique_ptr<sensors_for_ros::Controller>> controllers_;
-  std::vector<sensors_for_ros::Controller*> controller_stack_;
-
-  sensors_for_ros::CameraManager camera_manager_;
-  bool started_cameras_ = false;
-
- private:
-  void PushController(sensors_for_ros::Controller* controller) {
-    if (controller) {
-      controller_stack_.push_back(controller);
-      gui_.SetController(controller);
-    }
-  }
-
-  void PopController() {
-    if (controller_stack_.size() > 1) {
-      controller_stack_.pop_back();
-      gui_.SetController(controller_stack_.back());
-    }
-  }
-
-  void OnNavigateBack(const sensors_for_ros::event::GuiNavigateBack&) {
-    LOGI("Poping controller!");
-    PopController();
-  }
-
-  void OnNavigateTo(const sensors_for_ros::event::GuiNavigateTo& event) {
-    auto cit = std::find_if(controllers_.begin(), controllers_.end(),
-                            [&event](const auto& other) {
-                              return event.unique_id == other->UniqueId();
-                            });
-    if (cit != controllers_.end()) {
-      PushController(cit->get());
-    }
-  }
-
-  void OnRosDomainIdChanged(
-      const sensors_for_ros::event::RosDomainIdChanged& event) {
-    StartRos(event.id, event.interface);
-    PushController(&list_controller_);
-  }
-
-  void StartRos(int32_t ros_domain_id, std::string network_interface) {
+  void StartRos(int32_t ros_domain_id, const std::string& network_interface) {
     std::string cyclone_uri = cache_dir_;
     if (cyclone_uri.back() != '/') {
       cyclone_uri += '/';
@@ -195,9 +114,94 @@ class AndroidApp {
       LOGI("Shutting down ROS");
       ros_.Shutdown();
     }
-    LOGI("Initalizing ROS");
+    LOGI("Initializing ROS");
     ros_.Initialize(ros_domain_id);
   }
+
+  std::string GetSensorListJson() {
+    std::ostringstream ss;
+    ss << "[";
+    for (size_t i = 0; i < controllers_.size(); ++i) {
+      auto* c = controllers_[i].get();
+      if (i > 0) ss << ",";
+      ss << "{\"uniqueId\":\"" << c->UniqueId() << "\""
+         << ",\"prettyName\":\"" << c->PrettyName() << "\""
+         << ",\"sensorName\":\"" << c->SensorName() << "\""
+         << ",\"vendor\":\"" << c->SensorVendor() << "\""
+         << ",\"topicName\":\"" << c->TopicName() << "\""
+         << ",\"topicType\":\"" << c->TopicType() << "\""
+         << ",\"type\":\"sensor\"}";
+    }
+    ss << "]";
+    return ss.str();
+  }
+
+  std::string GetSensorDataJson(const std::string& unique_id) {
+    for (auto& c : controllers_) {
+      if (unique_id == c->UniqueId()) {
+        return c->GetLastMeasurementJson();
+      }
+    }
+    for (auto& c : camera_controllers_) {
+      if (unique_id == c->UniqueId()) {
+        return c->GetLastMeasurementJson();
+      }
+    }
+    return "{}";
+  }
+
+  std::string GetCameraListJson() {
+    std::ostringstream ss;
+    ss << "[";
+    for (size_t i = 0; i < camera_controllers_.size(); ++i) {
+      auto* c = camera_controllers_[i].get();
+      if (i > 0) ss << ",";
+      auto [width, height] = c->GetResolution();
+      ss << "{\"uniqueId\":\"" << c->UniqueId() << "\""
+         << ",\"name\":\"" << c->GetCameraName() << "\""
+         << ",\"enabled\":" << (c->IsEnabled() ? "true" : "false")
+         << ",\"imageTopicName\":\"" << c->ImageTopicName() << "\""
+         << ",\"imageTopicType\":\"" << c->ImageTopicType() << "\""
+         << ",\"infoTopicName\":\"" << c->InfoTopicName() << "\""
+         << ",\"infoTopicType\":\"" << c->InfoTopicType() << "\""
+         << ",\"resolutionWidth\":" << width
+         << ",\"resolutionHeight\":" << height << "}";
+    }
+    ss << "]";
+    return ss.str();
+  }
+
+  void EnableCamera(const std::string& unique_id) {
+    for (auto& c : camera_controllers_) {
+      if (unique_id == c->UniqueId()) {
+        c->EnableCamera();
+        return;
+      }
+    }
+  }
+
+  void DisableCamera(const std::string& unique_id) {
+    for (auto& c : camera_controllers_) {
+      if (unique_id == c->UniqueId()) {
+        c->DisableCamera();
+        return;
+      }
+    }
+  }
+
+  std::string cache_dir_;
+  std::string package_name_;
+  sensors_for_ros::RosInterface ros_;
+  sensors_for_ros::Sensors sensors_;
+
+  std::vector<std::unique_ptr<sensors_for_ros::SensorDataProvider>>
+      controllers_;
+  std::vector<std::unique_ptr<sensors_for_ros::CameraController>>
+      camera_controllers_;
+
+  sensors_for_ros::CameraManager camera_manager_;
+  bool started_cameras_ = false;
+  std::vector<std::string> network_interfaces_;
 };
 
 static std::unique_ptr<AndroidApp> g_app;
@@ -228,34 +232,6 @@ Java_com_github_sloretz_sensors_1for_1ros_NativeBridge_nativeInit(
 }
 
 JNIEXPORT void JNICALL
-Java_com_github_sloretz_sensors_1for_1ros_NativeBridge_nativeSurfaceCreated(
-    JNIEnv* env, jobject /*thiz*/, jobject surface) {
-  ANativeWindow* window = ANativeWindow_fromSurface(env, surface);
-  if (g_app && window) {
-    LOGI("nativeSurfaceCreated: window=%p", window);
-    g_app->gui_.Start(window);
-  }
-}
-
-JNIEXPORT void JNICALL
-Java_com_github_sloretz_sensors_1for_1ros_NativeBridge_nativeSurfaceDestroyed(
-    JNIEnv* /*env*/, jobject /*thiz*/) {
-  if (g_app) {
-    LOGI("nativeSurfaceDestroyed");
-    g_app->gui_.Stop();
-  }
-}
-
-JNIEXPORT void JNICALL
-Java_com_github_sloretz_sensors_1for_1ros_NativeBridge_nativeTouchEvent(
-    JNIEnv* /*env*/, jobject /*thiz*/, jint action, jfloat x, jfloat y,
-    jint tool_type) {
-  if (g_app) {
-    g_app->gui_.HandleTouchEvent(action, x, y, tool_type);
-  }
-}
-
-JNIEXPORT void JNICALL
 Java_com_github_sloretz_sensors_1for_1ros_NativeBridge_nativeDestroy(
     JNIEnv* /*env*/, jobject /*thiz*/) {
   if (g_app) {
@@ -280,7 +256,7 @@ Java_com_github_sloretz_sensors_1for_1ros_NativeBridge_nativeSetNetworkInterface
     env->ReleaseStringUTFChars(jstr, str);
   }
 
-  g_app->ros_domain_id_controller_.SetNetworkInterfaces(std::move(ifaces));
+  g_app->network_interfaces_ = std::move(ifaces);
 }
 
 JNIEXPORT void JNICALL
@@ -296,6 +272,78 @@ Java_com_github_sloretz_sensors_1for_1ros_NativeBridge_nativeOnPermissionResult(
   }
 
   env->ReleaseStringUTFChars(permission, perm);
+}
+
+JNIEXPORT void JNICALL
+Java_com_github_sloretz_sensors_1for_1ros_NativeBridge_nativeStartRos(
+    JNIEnv* env, jobject /*thiz*/, jint domain_id, jstring network_interface) {
+  if (!g_app) return;
+
+  const char* iface = env->GetStringUTFChars(network_interface, nullptr);
+  g_app->StartRos(domain_id, std::string(iface));
+  env->ReleaseStringUTFChars(network_interface, iface);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_github_sloretz_sensors_1for_1ros_NativeBridge_nativeGetSensorList(
+    JNIEnv* env, jobject /*thiz*/) {
+  if (!g_app) return env->NewStringUTF("[]");
+  std::string json = g_app->GetSensorListJson();
+  return env->NewStringUTF(json.c_str());
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_github_sloretz_sensors_1for_1ros_NativeBridge_nativeGetSensorData(
+    JNIEnv* env, jobject /*thiz*/, jstring unique_id) {
+  if (!g_app) return env->NewStringUTF("{}");
+
+  const char* id = env->GetStringUTFChars(unique_id, nullptr);
+  std::string json = g_app->GetSensorDataJson(std::string(id));
+  env->ReleaseStringUTFChars(unique_id, id);
+  return env->NewStringUTF(json.c_str());
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_github_sloretz_sensors_1for_1ros_NativeBridge_nativeGetCameraList(
+    JNIEnv* env, jobject /*thiz*/) {
+  if (!g_app) return env->NewStringUTF("[]");
+  std::string json = g_app->GetCameraListJson();
+  return env->NewStringUTF(json.c_str());
+}
+
+JNIEXPORT void JNICALL
+Java_com_github_sloretz_sensors_1for_1ros_NativeBridge_nativeEnableCamera(
+    JNIEnv* env, jobject /*thiz*/, jstring unique_id) {
+  if (!g_app) return;
+
+  const char* id = env->GetStringUTFChars(unique_id, nullptr);
+  g_app->EnableCamera(std::string(id));
+  env->ReleaseStringUTFChars(unique_id, id);
+}
+
+JNIEXPORT void JNICALL
+Java_com_github_sloretz_sensors_1for_1ros_NativeBridge_nativeDisableCamera(
+    JNIEnv* env, jobject /*thiz*/, jstring unique_id) {
+  if (!g_app) return;
+
+  const char* id = env->GetStringUTFChars(unique_id, nullptr);
+  g_app->DisableCamera(std::string(id));
+  env->ReleaseStringUTFChars(unique_id, id);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_github_sloretz_sensors_1for_1ros_NativeBridge_nativeGetNetworkInterfaces(
+    JNIEnv* env, jobject /*thiz*/) {
+  if (!g_app) return env->NewStringUTF("[]");
+
+  std::ostringstream ss;
+  ss << "[";
+  for (size_t i = 0; i < g_app->network_interfaces_.size(); ++i) {
+    if (i > 0) ss << ",";
+    ss << "\"" << g_app->network_interfaces_[i] << "\"";
+  }
+  ss << "]";
+  return env->NewStringUTF(ss.str().c_str());
 }
 
 }  // extern "C"

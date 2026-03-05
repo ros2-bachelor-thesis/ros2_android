@@ -10,21 +10,6 @@ find_package(sensor_msgs REQUIRED)
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
-add_library(imgui STATIC
-    DearImGui/imgui.cpp
-    DearImGui/imgui_demo.cpp
-    DearImGui/imgui_draw.cpp
-    DearImGui/imgui_tables.cpp
-    DearImGui/imgui_widgets.cpp
-    DearImGui/backends/imgui_impl_android.cpp
-    DearImGui/backends/imgui_impl_opengl3.cpp)
-target_include_directories(imgui PUBLIC
-    DearImGui
-    DearImGui/backends)
-target_link_libraries(imgui PUBLIC
-    EGL
-    GLESv3)
-
 add_library(android-ros SHARED
   jni_bridge.cc
   camera_descriptor.cc
@@ -35,10 +20,7 @@ add_library(android-ros SHARED
   controllers/camera_controller.cc
   controllers/gyroscope_sensor_controller.cc
   controllers/illuminance_sensor_controller.cc
-  controllers/list_controller.cc
   controllers/magnetometer_sensor_controller.cc
-  controllers/ros_domain_id_controller.cc
-  gui.cc
   jvm.cc
   ros_interface.cc
   sensor.cc
@@ -55,7 +37,6 @@ target_link_libraries(android-ros PRIVATE
     camera2ndk
     mediandk
     log
-    imgui
     rclcpp::rclcpp
     ${geometry_msgs_TARGETS}
     ${sensor_msgs_TARGETS})
