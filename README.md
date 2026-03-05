@@ -45,7 +45,7 @@ The following dependencies are required to build this app:
 - CMake 3.22.1
 
 **Build Tools:**
-- JDK 17 (for Gradle and keytool)
+- JDK 21 (for Gradle and keytool)
 - Gradle (for Kotlin/APK build)
 - make
 - zip/unzip
@@ -76,15 +76,15 @@ unzip ~/Downloads/commandlinetools-linux-8512546_latest.zip
 ```
 
 Install some Android SDK components
-(If it gives linkage error try installing `sudo apt install openjdk-17-jre-headless`)
+(If it gives linkage error try installing `sudo apt install openjdk-21-jre-headless`)
 ```
 ./cmdline-tools/bin/sdkmanager --sdk_root=$HOME/android-sdk "build-tools;33.0.2" "platforms;android-33" "ndk;25.1.8937393" "cmake;3.22.1"
 ```
 
-Install JDK 17 (needed for Gradle and keytool):
+Install JDK 21 (needed for Gradle and keytool):
 
 ```bash
-sudo apt install openjdk-17-jdk
+sudo apt install openjdk-21-jdk
 ```
 
 Install `adb`

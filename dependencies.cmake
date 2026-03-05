@@ -95,29 +95,29 @@ macro(build_crosscompile_dependencies)
     DEPENDENCIES ament_cmake_core ament_package
     CMAKE_ARGS ${extra_cmake_args})
   
-  dep_build(ament_cmake_pytest CMAKE
-    SOURCE_DIR "deps/ament_cmake/ament_cmake_pytest"
-    DEPENDENCIES ament_cmake_core ament_package
-    CMAKE_ARGS ${extra_cmake_args})
-  
   dep_build(ament_cmake_python CMAKE
     SOURCE_DIR "deps/ament_cmake/ament_cmake_python"
     DEPENDENCIES ament_cmake_core ament_package
     CMAKE_ARGS ${extra_cmake_args})
-  
+
+  dep_build(ament_cmake_test CMAKE
+    SOURCE_DIR "deps/ament_cmake/ament_cmake_test"
+    DEPENDENCIES ament_cmake_core ament_cmake_python ament_package
+    CMAKE_ARGS ${extra_cmake_args})
+
+  dep_build(ament_cmake_pytest CMAKE
+    SOURCE_DIR "deps/ament_cmake/ament_cmake_pytest"
+    DEPENDENCIES ament_cmake_core ament_cmake_test ament_package
+    CMAKE_ARGS ${extra_cmake_args})
+
   dep_build(ament_cmake_google_benchmark CMAKE
     SOURCE_DIR "deps/ament_cmake/ament_cmake_google_benchmark"
     DEPENDENCIES ament_cmake_core ament_cmake_python ament_cmake_export_dependencies ament_package
     CMAKE_ARGS ${extra_cmake_args})
-  
+
   dep_build(ament_cmake_target_dependencies CMAKE
     SOURCE_DIR "deps/ament_cmake/ament_cmake_target_dependencies"
     DEPENDENCIES ament_cmake_core ament_package
-    CMAKE_ARGS ${extra_cmake_args})
-  
-  dep_build(ament_cmake_test CMAKE
-    SOURCE_DIR "deps/ament_cmake/ament_cmake_test"
-    DEPENDENCIES ament_cmake_core ament_cmake_python ament_package
     CMAKE_ARGS ${extra_cmake_args})
   
   dep_build(ament_cmake_version CMAKE
