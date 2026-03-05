@@ -10,6 +10,16 @@ DEPS_DIR := deps
 JNI_LIBS_DIR := $(BUILD_DIR)/jniLibs/arm64-v8a
 APK_OUTPUT := app/build/outputs/apk/debug/app-debug.apk
 
+# Build type: RelWithDebInfo (default), Debug, or Release
+BUILD_TYPE ?= RelWithDebInfo
+
+# Convenience aliases
+.PHONY: debug release
+debug: BUILD_TYPE := Debug
+debug: all
+release: BUILD_TYPE := Release
+release: all
+
 # Parallelism
 NPROC := $(shell nproc)
 
@@ -19,7 +29,7 @@ NATIVE_STAMP := $(BUILD_DIR)/.native-built
 APK_STAMP := app/build/.apk-built
 
 .PHONY: all native app clean clean-app clean-native clean-deps help \
-       setup-debug install run logcat
+       setup-install install run logcat
 
 # ============================================================================
 # Main targets
@@ -46,7 +56,7 @@ native: $(NATIVE_STAMP)
 $(NATIVE_STAMP): $(DEPS_STAMP) CMakeLists.txt dependencies.cmake dep_build.cmake
 	@echo "==> Building native ROS 2 dependencies..."
 	@mkdir -p $(BUILD_DIR)
-	cd $(BUILD_DIR) && cmake ../ -DANDROID_HOME=$(ANDROID_HOME)
+	cd $(BUILD_DIR) && cmake ../ -DANDROID_HOME=$(ANDROID_HOME) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
 	cd $(BUILD_DIR) && $(MAKE) -j$(NPROC)
 	@touch $(NATIVE_STAMP)
 	@echo "==> Native build complete"
@@ -65,7 +75,7 @@ $(APK_STAMP): $(NATIVE_STAMP) $(shell find app/src -type f 2>/dev/null) app/buil
 # ============================================================================
 
 ## Verify a device is connected and ready for debugging
-setup-debug:
+setup-install:
 	@echo "==> Checking for connected Android device..."
 	@adb devices | grep -q 'device$$' || \
 		(echo "ERROR: No device found. Enable USB debugging and connect your phone." && exit 1)
@@ -76,7 +86,7 @@ setup-debug:
 	@echo "==> Device ready for deployment"
 
 ## Install APK to connected device
-install: setup-debug $(APK_STAMP)
+install: setup-install $(APK_STAMP)
 	@echo "==> Installing APK to device..."
 	adb install -r $(APK_OUTPUT)
 	@echo "==> Installed successfully"
@@ -89,8 +99,7 @@ run: install
 
 ## Tail device logs filtered to the app
 logcat:
-	adb logcat --pid=$$(adb shell pidof com.github.mowerick.ros2.android) 2>/dev/null \
-		|| adb logcat -s "ros2_android"
+	adb logcat -c && adb logcat -v color --pid=$$(adb shell pidof com.github.mowerick.ros2.android) *:D 2>/dev/null
 
 ## Clean everything
 clean: clean-native clean-app
@@ -119,11 +128,13 @@ help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Targets:"
-	@echo "  all          Build everything (deps + native + app) [default]"
+	@echo "  all          Build everything, RelWithDebInfo [default]"
+	@echo "  debug        Build everything with debug symbols (no optimization)"
+	@echo "  release      Build everything optimized (no debug symbols)"
 	@echo "  deps         Fetch git submodules + ROS 2 source deps"
 	@echo "  native       Build native ROS 2 dependencies only"
 	@echo "  app          Build Android APK only (requires native)"
-	@echo "  setup-debug  Verify device is connected and ready"
+	@echo "  setup-install  Verify device is connected and ready"
 	@echo "  install      Build + install APK to connected device"
 	@echo "  run          Build, install, and launch app on device"
 	@echo "  logcat       Tail device logs filtered to the app"

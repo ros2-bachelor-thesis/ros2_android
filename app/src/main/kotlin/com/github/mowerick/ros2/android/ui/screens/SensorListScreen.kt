@@ -5,11 +5,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -24,7 +25,9 @@ fun SensorListScreen(
     sensors: List<SensorInfo>,
     cameras: List<CameraInfo>,
     onSensorClick: (SensorInfo) -> Unit,
-    onCameraClick: (CameraInfo) -> Unit
+    onCameraClick: (CameraInfo) -> Unit,
+    onSensorToggle: (SensorInfo, Boolean) -> Unit,
+    onCameraToggle: (CameraInfo, Boolean) -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -48,6 +51,12 @@ fun SensorListScreen(
                     ListItem(
                         headlineContent = { Text(sensor.prettyName) },
                         supportingContent = { Text(sensor.topicName) },
+                        trailingContent = {
+                            Switch(
+                                checked = sensor.enabled,
+                                onCheckedChange = { onSensorToggle(sensor, it) }
+                            )
+                        },
                         modifier = Modifier.clickable { onSensorClick(sensor) }
                     )
                     Divider()
@@ -66,6 +75,12 @@ fun SensorListScreen(
                         headlineContent = { Text(camera.name) },
                         supportingContent = {
                             Text(if (camera.enabled) "Enabled" else "Disabled")
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = camera.enabled,
+                                onCheckedChange = { onCameraToggle(camera, it) }
+                            )
                         },
                         modifier = Modifier.clickable { onCameraClick(camera) }
                     )

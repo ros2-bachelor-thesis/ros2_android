@@ -13,7 +13,6 @@ AccelerometerSensorController::AccelerometerSensorController(
   sensor->SetListener(std::bind(&AccelerometerSensorController::OnSensorReading,
                                 this, std::placeholders::_1));
   publisher_.SetTopic("accelerometer");
-  publisher_.Enable();
 }
 
 void AccelerometerSensorController::OnSensorReading(

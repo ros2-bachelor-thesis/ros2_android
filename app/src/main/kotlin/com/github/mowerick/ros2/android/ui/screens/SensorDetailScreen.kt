@@ -4,14 +4,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -27,7 +30,9 @@ import com.github.mowerick.ros2.android.ui.components.TopicInfoCard
 fun SensorDetailScreen(
     sensor: SensorInfo,
     reading: SensorReading?,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onEnable: () -> Unit,
+    onDisable: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -48,6 +53,22 @@ fun SensorDetailScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            if (sensor.enabled) {
+                OutlinedButton(
+                    onClick = onDisable,
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                ) {
+                    Text("Disable Sensor")
+                }
+            } else {
+                Button(
+                    onClick = onEnable,
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                ) {
+                    Text("Enable Sensor")
+                }
+            }
+
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Name: ${sensor.sensorName}", style = MaterialTheme.typography.bodyLarge)

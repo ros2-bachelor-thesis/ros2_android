@@ -130,6 +130,7 @@ class AndroidApp {
          << ",\"vendor\":\"" << c->SensorVendor() << "\""
          << ",\"topicName\":\"" << c->TopicName() << "\""
          << ",\"topicType\":\"" << c->TopicType() << "\""
+         << ",\"enabled\":" << (c->IsEnabled() ? "true" : "false")
          << ",\"type\":\"sensor\"}";
     }
     ss << "]";
@@ -184,6 +185,24 @@ class AndroidApp {
     for (auto& c : camera_controllers_) {
       if (unique_id == c->UniqueId()) {
         c->DisableCamera();
+        return;
+      }
+    }
+  }
+
+  void EnableSensor(const std::string& unique_id) {
+    for (auto& c : controllers_) {
+      if (unique_id == c->UniqueId()) {
+        c->Enable();
+        return;
+      }
+    }
+  }
+
+  void DisableSensor(const std::string& unique_id) {
+    for (auto& c : controllers_) {
+      if (unique_id == c->UniqueId()) {
+        c->Disable();
         return;
       }
     }
@@ -328,6 +347,26 @@ Java_com_github_mowerick_ros2_android_NativeBridge_nativeDisableCamera(
 
   const char* id = env->GetStringUTFChars(unique_id, nullptr);
   g_app->DisableCamera(std::string(id));
+  env->ReleaseStringUTFChars(unique_id, id);
+}
+
+JNIEXPORT void JNICALL
+Java_com_github_mowerick_ros2_android_NativeBridge_nativeEnableSensor(
+    JNIEnv* env, jobject /*thiz*/, jstring unique_id) {
+  if (!g_app) return;
+
+  const char* id = env->GetStringUTFChars(unique_id, nullptr);
+  g_app->EnableSensor(std::string(id));
+  env->ReleaseStringUTFChars(unique_id, id);
+}
+
+JNIEXPORT void JNICALL
+Java_com_github_mowerick_ros2_android_NativeBridge_nativeDisableSensor(
+    JNIEnv* env, jobject /*thiz*/, jstring unique_id) {
+  if (!g_app) return;
+
+  const char* id = env->GetStringUTFChars(unique_id, nullptr);
+  g_app->DisableSensor(std::string(id));
   env->ReleaseStringUTFChars(unique_id, id);
 }
 

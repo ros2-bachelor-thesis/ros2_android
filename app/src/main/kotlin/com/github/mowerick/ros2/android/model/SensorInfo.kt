@@ -6,5 +6,6 @@ data class SensorInfo(
     val sensorName: String,
     val vendor: String,
     val topicName: String,
-    val topicType: String
+    val topicType: String,
+    val enabled: Boolean = false
 )

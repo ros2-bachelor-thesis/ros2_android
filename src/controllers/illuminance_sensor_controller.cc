@@ -14,7 +14,6 @@ IlluminanceSensorController::IlluminanceSensorController(
       std::bind(&IlluminanceSensorController::OnIlluminanceChanged, this,
                 std::placeholders::_1));
   publisher_.SetTopic("illuminance");
-  publisher_.Enable();
 }
 
 void IlluminanceSensorController::OnIlluminanceChanged(

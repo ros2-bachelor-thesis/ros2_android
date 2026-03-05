@@ -22,7 +22,9 @@ class CameraController : public SensorDataProvider {
   void EnableCamera();
   void DisableCamera();
 
-  bool IsEnabled() const { return image_pub_.Enabled(); }
+  void Enable() override { EnableCamera(); }
+  void Disable() override { DisableCamera(); }
+  bool IsEnabled() const override { return image_pub_.Enabled(); }
   const char* ImageTopicName() const { return image_pub_.Topic(); }
   const char* ImageTopicType() const { return image_pub_.Type(); }
   const char* InfoTopicName() const { return info_pub_.Topic(); }

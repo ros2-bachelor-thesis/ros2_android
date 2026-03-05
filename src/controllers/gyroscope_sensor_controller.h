@@ -23,6 +23,10 @@ class GyroscopeSensorController : public SensorDataProvider {
   const char* TopicName() const override { return publisher_.Topic(); }
   const char* TopicType() const override { return publisher_.Type(); }
 
+  void Enable() override { publisher_.Enable(); }
+  void Disable() override { publisher_.Disable(); }
+  bool IsEnabled() const override { return publisher_.Enabled(); }
+
  protected:
   void OnGyroReading(const geometry_msgs::msg::TwistStamped& msg);
 

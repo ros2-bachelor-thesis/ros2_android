@@ -20,6 +20,10 @@ class SensorDataProvider {
 
   const char* UniqueId() const { return unique_id_.c_str(); }
 
+  virtual void Enable() = 0;
+  virtual void Disable() = 0;
+  virtual bool IsEnabled() const = 0;
+
  private:
   const std::string unique_id_;
 };

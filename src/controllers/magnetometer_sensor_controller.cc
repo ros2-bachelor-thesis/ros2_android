@@ -13,7 +13,6 @@ MagnetometerSensorController::MagnetometerSensorController(
   sensor->SetListener(std::bind(&MagnetometerSensorController::OnSensorReading,
                                 this, std::placeholders::_1));
   publisher_.SetTopic("magnetometer");
-  publisher_.Enable();
 }
 
 void MagnetometerSensorController::OnSensorReading(

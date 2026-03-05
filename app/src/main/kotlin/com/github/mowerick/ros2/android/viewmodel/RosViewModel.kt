@@ -93,6 +93,28 @@ class RosViewModel : ViewModel() {
         updateCameraDetailScreen(uniqueId)
     }
 
+    fun enableSensor(uniqueId: String) {
+        NativeBridge.nativeEnableSensor(uniqueId)
+        refreshSensors()
+        updateSensorDetailScreen(uniqueId)
+    }
+
+    fun disableSensor(uniqueId: String) {
+        NativeBridge.nativeDisableSensor(uniqueId)
+        refreshSensors()
+        updateSensorDetailScreen(uniqueId)
+    }
+
+    private fun updateSensorDetailScreen(uniqueId: String) {
+        val current = _screen.value
+        if (current is Screen.SensorDetail && current.sensor.uniqueId == uniqueId) {
+            val updated = _sensors.value.find { it.uniqueId == uniqueId }
+            if (updated != null) {
+                _screen.value = Screen.SensorDetail(updated)
+            }
+        }
+    }
+
     private fun updateCameraDetailScreen(uniqueId: String) {
         val current = _screen.value
         if (current is Screen.CameraDetail && current.camera.uniqueId == uniqueId) {
@@ -122,7 +144,8 @@ class RosViewModel : ViewModel() {
                         sensorName = obj.getString("sensorName"),
                         vendor = obj.getString("vendor"),
                         topicName = obj.getString("topicName"),
-                        topicType = obj.getString("topicType")
+                        topicType = obj.getString("topicType"),
+                        enabled = obj.optBoolean("enabled", false)
                     )
                 )
             }

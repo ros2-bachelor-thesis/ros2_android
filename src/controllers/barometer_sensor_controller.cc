@@ -13,7 +13,6 @@ BarometerSensorController::BarometerSensorController(BarometerSensor* sensor,
   sensor->SetListener(std::bind(&BarometerSensorController::OnSensorReading,
                                 this, std::placeholders::_1));
   publisher_.SetTopic("barometer");
-  publisher_.Enable();
 }
 
 void BarometerSensorController::OnSensorReading(

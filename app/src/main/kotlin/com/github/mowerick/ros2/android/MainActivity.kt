@@ -61,12 +61,22 @@ class MainActivity : ComponentActivity() {
                         sensors = sensors,
                         cameras = cameras,
                         onSensorClick = { vm.navigateToSensor(it) },
-                        onCameraClick = { vm.navigateToCamera(it) }
+                        onCameraClick = { vm.navigateToCamera(it) },
+                        onSensorToggle = { sensor, enable ->
+                            if (enable) vm.enableSensor(sensor.uniqueId)
+                            else vm.disableSensor(sensor.uniqueId)
+                        },
+                        onCameraToggle = { camera, enable ->
+                            if (enable) vm.enableCamera(camera.uniqueId)
+                            else vm.disableCamera(camera.uniqueId)
+                        }
                     )
                     is Screen.SensorDetail -> SensorDetailScreen(
                         sensor = s.sensor,
                         reading = reading,
-                        onBack = { vm.navigateBack() }
+                        onBack = { vm.navigateBack() },
+                        onEnable = { vm.enableSensor(s.sensor.uniqueId) },
+                        onDisable = { vm.disableSensor(s.sensor.uniqueId) }
                     )
                     is Screen.CameraDetail -> CameraDetailScreen(
                         camera = s.camera,

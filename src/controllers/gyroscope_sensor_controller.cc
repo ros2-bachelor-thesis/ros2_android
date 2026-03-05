@@ -13,7 +13,6 @@ GyroscopeSensorController::GyroscopeSensorController(GyroscopeSensor* sensor,
   sensor->SetListener(std::bind(&GyroscopeSensorController::OnGyroReading, this,
                                 std::placeholders::_1));
   publisher_.SetTopic("gyroscope");
-  publisher_.Enable();
 }
 
 void GyroscopeSensorController::OnGyroReading(
