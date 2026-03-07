@@ -1,52 +1,63 @@
-# Ros2 Android
+# ROS 2 Android
 
-Fork of [sloretz/sensors_for_ros](https://github.com/sloretz/sensors_for_ros) - an Android app that publishes sensor data onto ROS 2 topics.
-Currently it supports ROS Humble.
+An Android app that deploys a ROS 2 Humble Perception & Positioning subsystem on ARM devices (arm64-v8a) using Eclipse Cyclone DDS. Built on top of [sloretz/sensors_for_ros](https://github.com/sloretz/sensors_for_ros) (Loretz, ROSCon 2022) - a CMake superbuild of ~70 ROS 2 Humble packages for Android - restructured from a pure C++ NativeActivity into a Java/Kotlin + Native hybrid with Jetpack Compose UI.
 
-**Supported sensors**
-* Accelerometer
-* Barometer
-* Camera(s)
-* Gyroscope
-* Illuminance
-* Magnetometer
+Target: Android 13 (API 33), NDK 25.1.
 
-The app uses a Java/Kotlin + Native hybrid architecture: a Kotlin Activity with Jetpack Compose UI, while the native layer (`libandroid-ros.so`) handles ROS 2, sensors, and cameras. ROS 2 packages up to `rclcpp` are cross-compiled via a CMake superbuild, then Gradle bundles everything into an APK.
+## Features
 
-## Inspiration
+### Implemented
 
-The original [sensors_for_ros](https://github.com/sloretz/sensors_for_ros) by Shane Loretz, and these projects:
+- **Built-in sensor publishers** - accelerometer, barometer, gyroscope, illuminance, magnetometer published as ROS 2 topics
+- **Camera publisher** - device cameras published as `sensor_msgs/Image`
+- **DDS domain selection** - configurable `ROS_DOMAIN_ID` and network interface for DDS discovery
+- **Jetpack Compose UI** - sensor list, live sensor data view, camera preview
 
-* https://github.com/cnlohr/rawdrawandroid
-* https://github.com/ocornut/imgui/tree/master/examples/example_android_opengl3
-* https://www.sisik.eu/blog/android/ndk/camera
+### Planned
 
-## How to install it
+- **Wi-Fi multicast / DDS discovery** - `MulticastLock` to enable DDS multicast on Android Wi-Fi
+- **USB camera** - external USB cameras via libusb/libuvc with JNI file descriptor handoff, published as `sensor_msgs/Image`
+- **USB LiDAR** - YDLIDAR SDK integration via JNI fd handoff, published as `sensor_msgs/LaserScan`
+- **DDS-Security** - OpenSSL static linking (hidden visibility to avoid BoringSSL collision), Cyclone DDS security plugins, SROS2 credentials
+- **Subscriber and in-app visualization** - subscribe to `sensor_msgs/Image` topics and render in the Android UI (replacing rviz, which is infeasible due to Qt5/Ogre3D dependencies)
+- **YOLO object detection** - on-device inference via NCNN, subscribing to `stereo_image_data` and publishing `object_xyz_pos`
+- **micro-ROS Agent** - hosting the agent on Android to bridge ROS 2 DDS to microcontrollers via serial/USB
 
-Currently the only way to get **Ros2 Android** is to build it from source.
-It is not yet available on Google's app store.
+## Architecture
 
-## How to build it from source
+```
+Kotlin (Jetpack Compose UI)
+    |
+    | JNI (JSON over strings)
+    |
+C++ (rclcpp, Cyclone DDS, sensor drivers)
+    |
+    | UDP multicast
+    |
+ROS 2 network (other nodes on same domain)
+```
 
-You do not need ROS installed on your machine to build the **Ros2 Android** app.
-However, it's needed to use the sensor data being published by your Android device.
+The native layer cross-compiles ~70 ROS 2 Humble packages via a CMake superbuild. The Kotlin layer communicates with C++ through JNI functions that exchange JSON strings - avoiding fragile `jobject` construction while keeping data volumes trivial.
+
+## How to Build
+
+You do not need ROS installed on your machine to build the app.
+However, ROS 2 Humble is needed on a companion machine to interact with the published topics.
 Follow [these instructions to install ROS Humble](https://docs.ros.org/en/humble/Installation.html).
 
 ### Dependencies
 
-The following dependencies are required to build this app:
-
 **Android SDK Components:**
 - Android SDK Command-line Tools (version 8.0)
 - Platform Tools (version 35.0.2)
-- Build Tools (version 33.0.2 or 34.0.0)
-- Android Platform API 33 (Android 13)
+- Build Tools (version 33.0.2 and 34.0.0)
+- Android Platform API 33 and 34
 - NDK 25.1.8937393
 - CMake 3.22.1
 
 **Build Tools:**
 - JDK 21 (for Gradle and keytool)
-- Gradle (for Kotlin/APK build)
+- Gradle (downloaded automatically by the wrapper)
 - make
 - zip/unzip
 - git
@@ -62,12 +73,9 @@ The following dependencies are required to build this app:
 **ROS 2 Tools:**
 - vcstool (for managing ROS 2 package repositories)
 
-### Computer setup
+### Computer Setup
 
 Download the [Android SDK "Command-line tools only" version](https://developer.android.com/studio#command-tools).
-Other versions may work, but this is the minimum needed.
-
-Make a folder for the SDK and extract the archive.
 
 ```bash
 mkdir ~/android-sdk
@@ -75,33 +83,33 @@ cd ~/android-sdk
 unzip ~/Downloads/commandlinetools-linux-8512546_latest.zip
 ```
 
-Install some Android SDK components
-(If it gives linkage error try installing `sudo apt install openjdk-21-jre-headless`)
-```
-./cmdline-tools/bin/sdkmanager --sdk_root=$HOME/android-sdk "build-tools;33.0.2" "platforms;android-33" "ndk;25.1.8937393" "cmake;3.22.1"
+Install SDK components (if it gives a linkage error try `sudo apt install openjdk-21-jre-headless`):
+
+```bash
+./cmdline-tools/bin/sdkmanager --sdk_root=$HOME/android-sdk "build-tools;33.0.2" "build-tools;34.0.0" "platforms;android-33" "platforms;android-34" "ndk;25.1.8937393" "cmake;3.22.1"
 ```
 
-Install JDK 21 (needed for Gradle and keytool):
+Install JDK 21:
 
 ```bash
 sudo apt install openjdk-21-jdk
 ```
 
-Install `adb`
+Install adb:
 
 ```bash
-# If you're using Ubuntu
+# Ubuntu
 sudo apt install adb android-sdk-platform-tools-common
-# If you're using Fedora
+# Fedora
 sudo dnf install android-tools
 ```
 
-Install catkin-pkg, empy, and lark
+Install Python dependencies:
 
 ```bash
-# If you're using Ubuntu
+# Ubuntu
 sudo apt install python3-catkin-pkg-modules python3-empy python3-lark-parser
-# If you're using Fedora
+# Fedora
 sudo dnf install python3-catkin_pkg python3-empy python3-lark-parser
 ```
 
@@ -114,37 +122,31 @@ echo "sdk.dir=$HOME/android-sdk" > local.properties
 You may need to do additional setup to use adb.
 Follow the [Set up a device for development](https://developer.android.com/studio/run/device#setting-up) instructions if you're using Ubuntu, or follow [the instructions in this thread](https://forums.fedoraforum.org/showthread.php?298965-HowTo-set-up-adb-(Android-Debug-Bridge)-on-Fedora-20) if you're using Fedora.
 
-### Create debug keys
+### Create Debug Keys
 
 ```bash
 mkdir -p ~/.android
 keytool -genkey -v -keystore ~/.android/debug.keystore -alias adb_debug_key -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android
 ```
 
-### Clone the repo
-
-This is a fork of [`sloretz/sensors_for_ros`](https://github.com/sloretz/sensors_for_ros).
-
-```
-git clone https://github.com/mowerick/ros2_android.git
-```
-
-Next initialize the git submodules.
+### Clone and Initialize
 
 ```bash
+git clone https://github.com/mowerick/ros2_android.git
+cd ros2_android
 git submodule init
 git submodule update
 ```
 
-### Download ROS dependencies
+### Download ROS Dependencies
 
-Use [vcstool](https://github.com/dirk-thomas/vcstool) to download the ROS packages we need to cross compile into the `deps` folder.
+Use [vcstool](https://github.com/dirk-thomas/vcstool) to download the ROS packages needed for cross-compilation:
 
-```
+```bash
 vcs import --input ros.repos deps/
 ```
 
-### Building the App
+### Build
 
 The build is two stages: CMake cross-compiles the native libraries, then Gradle compiles Kotlin and produces the APK.
 
@@ -165,7 +167,7 @@ This cross-compiles ~70 ROS 2 packages and `libandroid-ros.so`, then stages the 
 
 The APK is produced at `app/build/outputs/apk/debug/app-debug.apk`.
 
-### Installing the App on your Android Device
+### Install
 
 ```bash
 adb install app/build/outputs/apk/debug/app-debug.apk
@@ -173,53 +175,47 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 
 ## Debug
 
-### Installing via ADB
+### ADB Commands
 
-Install the debug APK directly to a connected device:
-
-```bash
-adb install app/build/outputs/apk/debug/app-debug.apk
-```
-
-To reinstall (keeping app data):
-
-```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
-
-Start the app from the command line:
+Start the app:
 
 ```bash
 adb shell am start -n com.github.mowerick.ros2.android/.MainActivity
 ```
 
+Reinstall (keeping app data):
+
+```bash
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
 ### Logging
 
-View all logs with color output:
+View all logs:
 
 ```bash
 adb logcat -v color
 ```
 
-Filter logs to only this app:
+Filter to this app:
 
 ```bash
 adb logcat -v color --pid=$(adb shell pidof -s com.github.mowerick.ros2.android)
 ```
 
-Clear the log buffer before a run:
+Clear buffer and follow:
 
 ```bash
 adb logcat -c && adb logcat -v color --pid=$(adb shell pidof -s com.github.mowerick.ros2.android)
 ```
 
-Save logs to a file:
+Save to file:
 
 ```bash
 adb logcat -v time > logcat.txt
 ```
 
-### Native stack traces
+### Native Stack Traces
 
 Symbolicate native crashes using ndk-stack:
 
@@ -227,14 +223,14 @@ Symbolicate native crashes using ndk-stack:
 adb logcat | $ANDROID_HOME/ndk/*/ndk-stack -sym build/jniLibs/arm64-v8a/
 ```
 
-### Granting permissions
+### Granting Permissions
 
-Grant a permission without writing the request code (app must be installed but not running):
+Grant a permission without the request dialog (app must be installed but not running):
 
 ```bash
 adb shell pm grant com.github.mowerick.ros2.android android.permission.CAMERA
 ```
 
-# Random lessons
+## Documentation
 
-During development I documented problems I encountered and fixes for them in the [Problems Encountered](docs/problems_encountered.md) document. Notes on the Java+Native hybrid restructuring are in [Hybrid Restructuring Notes](docs/hybrid_restructuring_notes.md).
+- [Hybrid Restructuring Notes](docs/hybrid_restructuring_notes.md) - detailed documentation of the NativeActivity to hybrid conversion, including decisions, workarounds, and issues encountered. This app was restructured from [sloretz/sensors_for_ros](https://github.com/sloretz/sensors_for_ros) (Loretz, ROSCon 2022), which was a pure C++ NativeActivity using Dear ImGui for UI.
