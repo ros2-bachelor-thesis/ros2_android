@@ -180,8 +180,8 @@ macro(build_crosscompile_dependencies)
     DEPENDENCIES ament_cmake_pytest ament_cmake_export_include_directories ament_cmake_export_link_flags ament_cmake_include_directories ament_cmake_export_interfaces ament_cmake_export_libraries ament_cmake_core ament_cmake_version ament_cmake_test ament_cmake_python rcutils ament_cmake_ros ament_cmake_export_dependencies ament_cmake_target_dependencies ament_cmake_gtest ament_cmake_gen_version_h domain_coordinator ament_cmake ament_cmake_gmock ament_cmake_export_definitions ament_cmake_export_targets ament_package
     CMAKE_ARGS ${extra_cmake_args})
 
-  dep_build(rcl_logging_android CMAKE
-    SOURCE_DIR "deps/rcl_logging_android"
+  dep_build(rcl_android_log CMAKE
+    SOURCE_DIR "rcl_android_log"
     DEPENDENCIES ament_cmake_pytest ament_cmake_export_include_directories ament_cmake_export_link_flags ament_cmake_include_directories ament_cmake_export_interfaces ament_cmake_export_libraries ament_cmake_core ament_cmake_version ament_cmake_test ament_cmake_python rcutils ament_cmake_ros ament_cmake_export_dependencies ament_cmake_target_dependencies ament_cmake_gtest ament_cmake_gen_version_h domain_coordinator ament_cmake ament_cmake_gmock ament_cmake_export_definitions ament_cmake_export_targets rcl_logging_interface ament_package
     CMAKE_ARGS ${extra_cmake_args})
 
@@ -374,9 +374,9 @@ macro(build_crosscompile_dependencies)
   dep_build(rcl CMAKE
     SOURCE_DIR "deps/rcl/rcl"
     DEPENDENCIES rosidl_typesupport_interface rcl_yaml_param_parser ament_cmake_pytest ament_cmake_export_include_directories tracetools ament_cmake_export_link_flags ament_cmake_include_directories ament_cmake_export_interfaces ament_cmake_export_libraries rmw_implementation_cmake rmw_implementation ament_index_cpp ament_cmake_core ament_cmake_version ament_cmake_test rcutils ament_cmake_python rcl_interfaces libyaml_vendor rosidl_runtime_c ament_cmake_ros ament_cmake_export_dependencies ament_cmake_target_dependencies ament_cmake_gen_version_h domain_coordinator builtin_interfaces ament_cmake_gtest ament_cmake ament_cmake_gmock ament_cmake_export_definitions rmw ament_cmake_export_targets rcpputils rcl_logging_interface ament_package
-    rcl_logging_android
+    rcl_android_log
     CMAKE_ARGS ${extra_cmake_args}
-    -DRCL_LOGGING_IMPLEMENTATION=rcl_logging_android
+    -DRCL_LOGGING_IMPLEMENTATION=rcl_android_log
     )
 
   dep_build(libstatistics_collector CMAKE
