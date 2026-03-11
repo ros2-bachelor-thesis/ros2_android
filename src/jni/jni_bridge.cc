@@ -9,17 +9,19 @@
 
 #include "camera/base/camera_descriptor.h"
 #include "camera/camera_manager.h"
+#include "camera/controllers/camera_controller.h"
+#include "core/log.h"
+#include "core/notification_queue.h"
+#include "gps/base/gps_location_provider.h"
+#include "gps/controllers/gps_controller.h"
+#include "jni/jvm.h"
+#include "ros/ros_interface.h"
+#include "sensors/base/sensor_data_provider.h"
 #include "sensors/controllers/accelerometer_sensor_controller.h"
 #include "sensors/controllers/barometer_sensor_controller.h"
-#include "camera/controllers/camera_controller.h"
 #include "sensors/controllers/gyroscope_sensor_controller.h"
 #include "sensors/controllers/illuminance_sensor_controller.h"
 #include "sensors/controllers/magnetometer_sensor_controller.h"
-#include "jni/jvm.h"
-#include "core/log.h"
-#include "core/notification_queue.h"
-#include "ros/ros_interface.h"
-#include "sensors/base/sensor_data_provider.h"
 #include "sensors/sensors.h"
 
 static JavaVM *g_jvm = nullptr;
@@ -81,6 +83,13 @@ public:
         controllers_.emplace_back(std::move(controller));
       }
     }
+
+    // Initialize GPS location provider and controller
+    LOGI("Initializing GPS");
+    gps_provider_ = std::make_unique<ros2_android::GpsLocationProvider>();
+    auto gps_controller = std::make_unique<ros2_android::GpsController>(
+        gps_provider_.get(), ros_);
+    controllers_.emplace_back(std::move(gps_controller));
   }
 
   ~AndroidApp() = default;
@@ -348,6 +357,7 @@ public:
       camera_controllers_;
 
   ros2_android::CameraManager camera_manager_;
+  std::unique_ptr<ros2_android::GpsLocationProvider> gps_provider_;
   bool started_cameras_ = false;
   std::vector<std::string> network_interfaces_;
 };
@@ -714,6 +724,22 @@ extern "C"
         });
 
     LOGI("Notification callback registered");
+  }
+
+  JNIEXPORT void JNICALL
+  Java_com_github_mowerick_ros2_android_NativeBridge_nativeOnGpsLocation(
+      JNIEnv * /*env*/, jobject /*thiz*/, jdouble latitude, jdouble longitude,
+      jdouble altitude, jfloat accuracy, jfloat altitude_accuracy,
+      jlong timestamp_ns)
+  {
+    if (!g_app || !g_app->gps_provider_)
+    {
+      return;
+    }
+
+    g_app->gps_provider_->OnLocationUpdate(latitude, longitude, altitude,
+                                           accuracy, altitude_accuracy,
+                                           timestamp_ns);
   }
 
 } // extern "C"

@@ -23,7 +23,7 @@ fun TopicInfoCard(
     topicType: String,
     modifier: Modifier = Modifier
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var expanded by remember { mutableStateOf(true) }
 
     Card(
         modifier = modifier

@@ -30,29 +30,81 @@ import java.net.NetworkInterface
 
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        private var instance: MainActivity? = null
+        private var viewModel: RosViewModel? = null
+
+        fun requestLocationPermission() {
+            instance?.requestLocationPermission?.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+
+        fun hasLocationPermission(): Boolean {
+            return instance?.let {
+                ContextCompat.checkSelfPermission(it, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                    PackageManager.PERMISSION_GRANTED
+            } ?: false
+        }
+
+        fun setViewModel(vm: RosViewModel) {
+            viewModel = vm
+        }
+
+        fun getActivity(): MainActivity? = instance
+
+        fun getLocationSettingsLauncher() = instance?.locationSettingsLauncher
+    }
+
     private val requestCameraPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             NativeBridge.nativeOnPermissionResult("CAMERA", granted)
+            // After camera permission, check location permission
+            checkLocationPermission()
+        }
+
+    private val requestLocationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            NativeBridge.nativeOnPermissionResult("LOCATION", granted)
+            if (granted) {
+                viewModel?.onLocationPermissionGranted()
+            }
+        }
+
+    private val locationSettingsLauncher =
+        registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+            android.util.Log.i("MainActivity", "Location settings result: ${result.resultCode}")
+            if (result.resultCode == RESULT_OK) {
+                android.util.Log.i("MainActivity", "Location settings enabled by user")
+                viewModel?.onLocationSettingsEnabled()
+            } else {
+                android.util.Log.w("MainActivity", "User declined to enable location settings")
+                viewModel?.onLocationSettingsCancelled()
+            }
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        instance = this
 
         NativeBridge.nativeInit(cacheDir.absolutePath, packageName)
         NativeBridge.nativeSetNetworkInterfaces(queryNetworkInterfaces())
 
+        // Request camera permission first, then location in the callback
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
         ) {
             requestCameraPermission.launch(Manifest.permission.CAMERA)
         } else {
             NativeBridge.nativeOnPermissionResult("CAMERA", true)
+            checkLocationPermission()
         }
 
         setContent {
             Ros2AndroidTheme {
                 val vm: RosViewModel = viewModel(factory = RosViewModelFactory(applicationContext))
-                LaunchedEffect(Unit) { vm.loadNetworkInterfaces() }
+                LaunchedEffect(Unit) {
+                    setViewModel(vm)
+                    vm.loadNetworkInterfaces()
+                }
 
                 val screen by vm.screen.collectAsState()
                 val rosStarted by vm.rosStarted.collectAsState()
@@ -145,7 +197,19 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         NativeBridge.nativeDestroy()
+        instance = null
+        viewModel = null
         super.onDestroy()
+    }
+
+    private fun checkLocationPermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestLocationPermission.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        } else {
+            NativeBridge.nativeOnPermissionResult("LOCATION", true)
+        }
     }
 
     private fun queryNetworkInterfaces(): Array<String> {

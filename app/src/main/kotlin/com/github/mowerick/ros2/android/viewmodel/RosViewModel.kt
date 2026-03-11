@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.net.wifi.WifiManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.mowerick.ros2.android.GpsManager
+import com.github.mowerick.ros2.android.MainActivity
 import com.github.mowerick.ros2.android.NativeBridge
 import com.github.mowerick.ros2.android.model.CameraInfo
 import com.github.mowerick.ros2.android.model.NativeNotification
@@ -44,6 +46,7 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
     val rosDomainId: StateFlow<Int> = _rosDomainId
 
     private var multicastLock: WifiManager.MulticastLock? = null
+    private val gpsManager = GpsManager(applicationContext)
 
     private val _sensors = MutableStateFlow<List<SensorInfo>>(emptyList())
     val sensors: StateFlow<List<SensorInfo>> = _sensors
@@ -85,6 +88,21 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
                 addNotification(message, if (severity == "ERROR") Severity.ERROR else Severity.WARNING)
             }
         }
+
+        // Register GPS enable/disable callbacks
+        NativeBridge.setGpsCallbacks(
+            onEnable = {
+                android.util.Log.i("RosViewModel", "GPS enable callback received")
+                viewModelScope.launch {
+                    android.util.Log.i("RosViewModel", "Calling tryStartGps()")
+                    tryStartGps()
+                }
+            },
+            onDisable = {
+                android.util.Log.i("RosViewModel", "GPS disable callback received")
+                gpsManager.stop()
+            }
+        )
 
         // Auto-dismiss expired notifications
         viewModelScope.launch {
@@ -152,6 +170,81 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
         _selectedNetworkInterface.value = networkInterface
         _rosStarted.value = true
         refreshSensorsAndCameras()
+    }
+
+    private fun tryStartGps() {
+        android.util.Log.i("RosViewModel", "tryStartGps() called")
+
+        // Check if we have permission
+        if (!MainActivity.hasLocationPermission()) {
+            android.util.Log.e("RosViewModel", "GPS: No location permission")
+            addNotification("GPS: Location permission required", Severity.WARNING)
+            return
+        }
+
+        android.util.Log.i("RosViewModel", "GPS: Permission granted")
+
+        // Check location settings and prompt user if needed
+        val launcher = MainActivity.getLocationSettingsLauncher()
+        if (launcher != null) {
+            android.util.Log.i("RosViewModel", "GPS: Checking location settings")
+            gpsManager.checkLocationSettings(
+                launcher,
+                onSuccess = {
+                    android.util.Log.i("RosViewModel", "GPS: Location settings OK, starting GPS")
+                    // Settings are OK, start GPS
+                    startGpsLocationUpdates()
+                },
+                onFailure = {
+                    android.util.Log.w("RosViewModel", "GPS: Location settings check failed")
+                    // Error occurred
+                    addNotification("GPS: Location settings check failed", Severity.ERROR)
+                }
+            )
+        } else {
+            android.util.Log.w("RosViewModel", "GPS: No launcher available, trying direct start")
+            // Fallback to direct start if no launcher
+            startGpsLocationUpdates()
+        }
+    }
+
+    private fun startGpsLocationUpdates() {
+        val started = gpsManager.start()
+        if (!started) {
+            val status = gpsManager.getStatus()
+            android.util.Log.e("RosViewModel", "GPS: Failed to start, status=$status")
+            val message = when {
+                status.contains("Permission") -> "GPS: Location permission required"
+                status.contains("disabled") -> "GPS: Location services are disabled"
+                else -> "GPS: Failed to start"
+            }
+            addNotification(message, Severity.ERROR)
+        } else {
+            android.util.Log.i("RosViewModel", "GPS: Started successfully")
+        }
+    }
+
+    fun onLocationSettingsEnabled() {
+        android.util.Log.i("RosViewModel", "User enabled location settings")
+
+        // If this was triggered from enableSensor, we need to complete the enable
+        // Check if GPS sensor is not yet enabled
+        val gpsSensor = _sensors.value.find { it.uniqueId == "gps_location_provider" }
+        if (gpsSensor != null && !gpsSensor.enabled) {
+            android.util.Log.i("RosViewModel", "Completing GPS sensor enable after location settings enabled")
+            NativeBridge.nativeEnableSensor("gps_location_provider")
+            refreshSensors()
+            updateSensorDetailScreen("gps_location_provider")
+        } else {
+            // GPS was already enabled, just start updates
+            android.util.Log.i("RosViewModel", "GPS already enabled, starting location updates")
+            startGpsLocationUpdates()
+        }
+    }
+
+    fun onLocationSettingsCancelled() {
+        android.util.Log.w("RosViewModel", "User cancelled location settings dialog")
+        addNotification("GPS: Location services required", Severity.WARNING)
     }
 
     fun stopRos() {
@@ -315,15 +408,63 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
     }
 
     fun enableSensor(uniqueId: String) {
-        NativeBridge.nativeEnableSensor(uniqueId)
-        refreshSensors()
-        updateSensorDetailScreen(uniqueId)
+        android.util.Log.i("RosViewModel", "enableSensor called for: $uniqueId")
+
+        // Special handling for GPS sensor - check location settings first
+        if (uniqueId == "gps_location_provider") {
+            android.util.Log.i("RosViewModel", "GPS sensor enable requested, checking prerequisites")
+
+            // Check permission first
+            if (!MainActivity.hasLocationPermission()) {
+                android.util.Log.e("RosViewModel", "GPS: No location permission")
+                addNotification("GPS: Location permission required", Severity.WARNING)
+                return
+            }
+
+            android.util.Log.i("RosViewModel", "GPS: Permission granted, checking location settings")
+
+            // Check and prompt for location settings before enabling
+            val launcher = MainActivity.getLocationSettingsLauncher()
+            if (launcher != null) {
+                gpsManager.checkLocationSettings(
+                    launcher,
+                    onSuccess = {
+                        android.util.Log.i("RosViewModel", "GPS: Location settings OK, enabling sensor")
+                        // Settings OK, proceed with enable
+                        NativeBridge.nativeEnableSensor(uniqueId)
+                        refreshSensors()
+                        updateSensorDetailScreen(uniqueId)
+                    },
+                    onFailure = {
+                        android.util.Log.e("RosViewModel", "GPS: Location settings check failed")
+                        addNotification("GPS: Location settings check failed", Severity.ERROR)
+                    }
+                )
+            } else {
+                android.util.Log.w("RosViewModel", "GPS: No launcher, proceeding anyway")
+                // No launcher available, proceed anyway (GPS manager will handle it)
+                NativeBridge.nativeEnableSensor(uniqueId)
+                refreshSensors()
+                updateSensorDetailScreen(uniqueId)
+            }
+        } else {
+            // Non-GPS sensors: enable directly
+            NativeBridge.nativeEnableSensor(uniqueId)
+            refreshSensors()
+            updateSensorDetailScreen(uniqueId)
+        }
     }
 
     fun disableSensor(uniqueId: String) {
         NativeBridge.nativeDisableSensor(uniqueId)
         refreshSensors()
         updateSensorDetailScreen(uniqueId)
+    }
+
+    fun onLocationPermissionGranted() {
+        if (_rosStarted.value && !gpsManager.isRunning()) {
+            tryStartGps()
+        }
     }
 
     // -- Private helpers --

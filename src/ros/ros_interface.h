@@ -109,9 +109,6 @@ class Publisher {
   bool Enabled() const { return nullptr != publisher_.get(); }
 
   const char* Topic() const {
-    if (publisher_) {
-      return publisher_->get_topic_name();
-    }
     return topic_.c_str();
   }
 

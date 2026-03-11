@@ -1,0 +1,65 @@
+#include "gps/base/gps_location_provider.h"
+
+#include <cmath>
+
+#include "core/log.h"
+
+namespace ros2_android {
+
+void GpsLocationProvider::OnLocationUpdate(double latitude, double longitude,
+                                           double altitude, float accuracy,
+                                           float altitude_accuracy,
+                                           int64_t timestamp_ns) {
+  if (!location_callback_) {
+    // No subscriber yet, silently drop
+    return;
+  }
+
+  sensor_msgs::msg::NavSatFix msg;
+
+  // Convert Android timestamp (nanoseconds since boot) to ROS time
+  // Note: This uses system time, not boot time. For proper sync, we'd need
+  // to track boot time offset, but for MVP we'll use current ROS time
+  auto now = std::chrono::system_clock::now();
+  auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    now.time_since_epoch())
+                    .count();
+  msg.header.stamp.sec = now_ns / 1000000000LL;
+  msg.header.stamp.nanosec = now_ns % 1000000000LL;
+  msg.header.frame_id = "gps";
+
+  // Set GPS fix status
+  msg.status.status = sensor_msgs::msg::NavSatStatus::STATUS_FIX;
+  msg.status.service = sensor_msgs::msg::NavSatStatus::SERVICE_GPS;
+
+  // Set position
+  msg.latitude = latitude;
+  msg.longitude = longitude;
+  msg.altitude = altitude;
+
+  // Set covariance (ENU - East, North, Up)
+  // Android provides horizontal and vertical accuracy in meters (1-sigma)
+  // Covariance = variance = sigma^2
+  double horizontal_variance = accuracy * accuracy;
+  double vertical_variance = altitude_accuracy * altitude_accuracy;
+
+  // Initialize covariance matrix to zero
+  for (int i = 0; i < 9; i++) {
+    msg.position_covariance[i] = 0.0;
+  }
+
+  // Diagonal: East, North, Up variances
+  msg.position_covariance[0] = horizontal_variance;  // East
+  msg.position_covariance[4] = horizontal_variance;  // North
+  msg.position_covariance[8] = vertical_variance;    // Up
+
+  msg.position_covariance_type =
+      sensor_msgs::msg::NavSatFix::COVARIANCE_TYPE_DIAGONAL_KNOWN;
+
+  LOGI("GPS Update: lat=%.6f, lon=%.6f, alt=%.2f, acc=%.2fm", latitude,
+       longitude, altitude, accuracy);
+
+  location_callback_(msg);
+}
+
+}  // namespace ros2_android

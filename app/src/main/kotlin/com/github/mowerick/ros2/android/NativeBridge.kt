@@ -6,6 +6,8 @@ object NativeBridge {
     }
 
     private var notificationCallback: ((String, String) -> Unit)? = null
+    private var gpsEnableCallback: (() -> Unit)? = null
+    private var gpsDisableCallback: (() -> Unit)? = null
 
     external fun nativeInit(cacheDir: String, packageName: String)
     external fun nativeDestroy()
@@ -26,10 +28,23 @@ object NativeBridge {
     external fun nativeGetCameraFrame(uniqueId: String): ByteArray?
     external fun nativeGetPendingNotifications(): String
     external fun nativeSetNotificationCallback()
+    external fun nativeOnGpsLocation(
+        latitude: Double,
+        longitude: Double,
+        altitude: Double,
+        accuracy: Float,
+        altitudeAccuracy: Float,
+        timestampNs: Long
+    )
 
     fun setNotificationCallback(callback: (severity: String, message: String) -> Unit) {
         notificationCallback = callback
         nativeSetNotificationCallback()
+    }
+
+    fun setGpsCallbacks(onEnable: () -> Unit, onDisable: () -> Unit) {
+        gpsEnableCallback = onEnable
+        gpsDisableCallback = onDisable
     }
 
     // Called from native code (JNI)
@@ -37,5 +52,19 @@ object NativeBridge {
     @JvmStatic
     private fun onNotification(severity: String, message: String) {
         notificationCallback?.invoke(severity, message)
+    }
+
+    // Called from native code when GPS sensor is enabled
+    @Suppress("unused")
+    @JvmStatic
+    private fun onGpsEnable() {
+        gpsEnableCallback?.invoke()
+    }
+
+    // Called from native code when GPS sensor is disabled
+    @Suppress("unused")
+    @JvmStatic
+    private fun onGpsDisable() {
+        gpsDisableCallback?.invoke()
     }
 }
