@@ -98,18 +98,51 @@ AFTER:  Kotlin Compose screens <-> JNI data queries/commands <-> C++ data model
 **Issues encountered**: None significant - JSON serialization was straightforward.
 **References**: Android `org.json` API documentation.
 
-### Polling over Callbacks
+### Event-Driven Callbacks (Replaced Polling)
 
-**Why**: Need to update the Kotlin UI with sensor data from C++ ROS nodes.
-**Approach**: The ViewModel polls `nativeGetSensorData()` at 10 Hz instead of C++ calling back into Kotlin.
-**Alternatives**: C++ callbacks into Kotlin would require:
-- `AttachCurrentThread`/`DetachCurrentThread` for each callback from sensor threads
-- `NewGlobalRef` to prevent the Kotlin callback object from being GC'd
-- Thread safety concerns around which thread the callback arrives on
-- The complexity of the `Emitter` pattern crossing the JNI boundary
-**Limitations**: UI updates are capped at 10 Hz regardless of sensor publish rate. Sensors still publish to ROS topics at their native rate - the polling only affects display refresh.
-**Issues encountered**: None - the polling approach avoided the threading complexities of the callback alternative.
-**References**: Android JNI threading documentation (`AttachCurrentThread`).
+**Why**: The initial hybrid architecture used polling - the ViewModel ran `while(polling)` loops calling `nativeGetSensorData()` every 100ms. This wasted CPU cycles even when no new data arrived, drained battery with continuous background coroutines, and added 100ms latency between sensor reading and UI update.
+**Approach**: Replaced polling with event-driven JNI callbacks that mirror the existing notification callback infrastructure:
+
+**Native Layer:**
+- Created `SensorDataCallbackQueue` and `CameraFrameCallbackQueue` singleton managers in `core/` (similar to `NotificationQueue`)
+- Each callback queue implements built-in 10 Hz throttling (100ms minimum interval) to prevent callback storms from high-rate sensors
+- Added `PostSensorDataUpdate(sensor_id)` and `PostCameraFrameUpdate(camera_id)` convenience functions
+- Updated all sensor controllers (`accelerometer`, `gyroscope`, `barometer`, `illuminance`, `magnetometer`, `gps`) to call `PostSensorDataUpdate()` in their `OnSensorReading()` methods
+- Updated `CameraController::OnImage()` to call `PostCameraFrameUpdate()` when new frame arrives
+- Added JNI registration methods `Java_..._nativeSetSensorDataCallback()` and `Java_..._nativeSetCameraFrameCallback()` in `jni_bridge.cc`
+- Callbacks handle thread attachment (`AttachCurrentThread`/`DetachCurrentThread`) automatically when invoked from ROS executor threads
+- Global JNI references managed with cleanup on re-registration (prevents memory leaks)
+
+**Kotlin Layer:**
+- Added `setSensorDataCallback()` and `setCameraFrameCallback()` methods to `NativeBridge`
+- Registered callbacks in `RosViewModel.init{}` block (same pattern as notification callbacks)
+- Callbacks check current screen state and only fetch data if the relevant detail screen is active (screen-aware updates)
+- Removed `polling` and `cameraPreviewPolling` flags
+- Removed `startPolling()`, `stopPolling()`, `startCameraPreview()`, `stopCameraPreview()` functions (~50 lines)
+- Simplified navigation methods - callbacks handle updates automatically
+
+**Data Flow (Before):**
+```
+Sensor event → Controller stores in last_msg_
+                     ↓
+Kotlin coroutine polls every 100ms → JNI → GetSensorData() → return last_msg_
+```
+
+**Data Flow (After):**
+```
+Sensor event → Controller stores in last_msg_ → PostSensorDataUpdate(id)
+                                                       ↓
+                                         Callback invoked (throttled to 10 Hz)
+                                                       ↓
+                               Kotlin checks screen state → if detail screen active:
+                                                       ↓
+                                         JNI → GetSensorData() → return last_msg_
+```
+
+**Alternatives**: The initial polling approach was chosen to avoid JNI callback complexity, but after implementing notification callbacks successfully, the pattern was proven safe and could be reused for sensor/camera data.
+**Limitations**: UI updates still capped at 10 Hz (same as before), but now updates arrive immediately when data is available rather than on a fixed 100ms schedule. Sensors still publish to ROS topics at their native rate - the throttling only affects UI callbacks.
+**Issues encountered**: None - the callback infrastructure worked correctly on first build. The existing notification callback pattern provided a proven template for thread-safe JNI callbacks.
+**References**: Android JNI threading documentation (`AttachCurrentThread`), ROS 2 executor threading model, existing `NotificationQueue` implementation in `core/notification_queue.h`.
 
 ### Removal of JNI-Based Android API Access
 

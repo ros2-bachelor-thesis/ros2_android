@@ -80,8 +80,6 @@ class RosViewModel(
 
     private var nextNotificationId = 0L
 
-    private var polling = false
-    private var cameraPreviewPolling = false
     private val _isProbing = MutableStateFlow(false)
     val isProbing: StateFlow<Boolean> = _isProbing
 
@@ -93,6 +91,38 @@ class RosViewModel(
         NativeBridge.setNotificationCallback { severity, message ->
             viewModelScope.launch {
                 addNotification(message, if (severity == "ERROR") Severity.ERROR else Severity.WARNING)
+            }
+        }
+
+        // Register sensor data callback (replaces polling)
+        NativeBridge.setSensorDataCallback { sensorId ->
+            viewModelScope.launch {
+                // Only update if we're viewing this sensor's detail screen
+                val currentScreen = _screen.value
+                if (currentScreen is Screen.SensorDetail && currentScreen.sensorId == sensorId) {
+                    try {
+                        val reading = NativeBridge.nativeGetSensorData(sensorId)
+                        _currentReading.value = reading
+                    } catch (e: Exception) {
+                        android.util.Log.e("RosViewModel", "Failed to get sensor data for $sensorId", e)
+                    }
+                }
+            }
+        }
+
+        // Register camera frame callback (replaces polling)
+        NativeBridge.setCameraFrameCallback { cameraId ->
+            viewModelScope.launch {
+                // Only update if we're viewing this camera's detail screen
+                val currentScreen = _screen.value
+                if (currentScreen is Screen.CameraDetail && currentScreen.cameraId == cameraId) {
+                    try {
+                        val bitmap = NativeBridge.nativeGetCameraFrame(cameraId)
+                        _cameraFrame.value = bitmap
+                    } catch (e: Exception) {
+                        android.util.Log.e("RosViewModel", "Failed to get camera frame for $cameraId", e)
+                    }
+                }
             }
         }
 
@@ -265,14 +295,12 @@ class RosViewModel(
     fun navigateToSensor(sensor: SensorInfo) {
         _currentReading.value = null
         _screen.value = Screen.SensorDetail(sensor.uniqueId)
-        startPolling(sensor.uniqueId)
+        // Callback will handle updates automatically
     }
 
     fun navigateToCamera(camera: CameraInfo) {
         _screen.value = Screen.CameraDetail(camera.uniqueId)
-        if (camera.enabled) {
-            startCameraPreview(camera.uniqueId)
-        }
+        // Callback will handle frame updates automatically
     }
 
     // -- Pipeline node navigation --
@@ -294,10 +322,11 @@ class RosViewModel(
     // -- Back navigation --
 
     fun navigateBack() {
-        stopPolling()
-        stopCameraPreview()
+        // Clear sensor reading and camera frame when navigating away
         when (_screen.value) {
             is Screen.SensorDetail, is Screen.CameraDetail -> {
+                _currentReading.value = null  // Clear sensor reading
+                _cameraFrame.value = null     // Clear camera frame
                 refreshSensorsAndCameras()
                 _screen.value = Screen.BuiltInSensors
             }
@@ -316,11 +345,11 @@ class RosViewModel(
     fun enableCamera(uniqueId: String) {
         NativeBridge.nativeEnableCamera(uniqueId)
         refreshCameras()
-        startCameraPreview(uniqueId)
+        // Callback will handle frame updates automatically
     }
 
     fun disableCamera(uniqueId: String) {
-        stopCameraPreview()
+        _cameraFrame.value = null  // Clear camera frame
         NativeBridge.nativeDisableCamera(uniqueId)
         refreshCameras()
     }
@@ -383,47 +412,6 @@ class RosViewModel(
         } catch (e: Exception) {
             android.util.Log.e("RosViewModel", "Failed to refresh cameras", e)
         }
-    }
-
-    private fun startPolling(uniqueId: String) {
-        polling = true
-        viewModelScope.launch {
-            while (polling) {
-                try {
-                    val reading = NativeBridge.nativeGetSensorData(uniqueId)
-                    _currentReading.value = reading
-                } catch (e: Exception) {
-                    android.util.Log.e("RosViewModel", "Failed to poll sensor data for $uniqueId", e)
-                }
-                delay(100)
-            }
-        }
-    }
-
-    private fun stopPolling() {
-        polling = false
-        _currentReading.value = null
-    }
-
-    private fun startCameraPreview(uniqueId: String) {
-        cameraPreviewPolling = true
-        viewModelScope.launch {
-            while (cameraPreviewPolling) {
-                try {
-                    // Native code now returns Bitmap directly (no manual parsing needed)
-                    val bitmap = NativeBridge.nativeGetCameraFrame(uniqueId)
-                    _cameraFrame.value = bitmap
-                } catch (e: Exception) {
-                    android.util.Log.e("RosViewModel", "Failed to get camera frame for $uniqueId", e)
-                }
-                delay(100)
-            }
-        }
-    }
-
-    private fun stopCameraPreview() {
-        cameraPreviewPolling = false
-        _cameraFrame.value = null
     }
 
     fun toggleTopicProbing() {

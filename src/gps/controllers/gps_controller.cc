@@ -3,6 +3,7 @@
 #include <cmath>
 #include <sstream>
 
+#include "core/sensor_data_callback_queue.h"
 #include "jni/jvm.h"
 
 namespace ros2_android {
@@ -22,6 +23,9 @@ void GpsController::OnLocationUpdate(const sensor_msgs::msg::NavSatFix& msg) {
     last_msg_ = msg;
   }
   publisher_.Publish(msg);
+
+  // Trigger callback to notify UI of new sensor data (throttled to 10 Hz)
+  ros2_android::PostSensorDataUpdate(std::string(UniqueId()));
 }
 
 std::string GpsController::GetLastMeasurementJson() {

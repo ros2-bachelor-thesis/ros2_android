@@ -2,6 +2,8 @@
 
 #include <sstream>
 
+#include "core/sensor_data_callback_queue.h"
+
 namespace ros2_android {
 
 AccelerometerSensorController::AccelerometerSensorController(
@@ -22,6 +24,9 @@ void AccelerometerSensorController::OnSensorReading(
     last_msg_ = msg;
   }
   publisher_.Publish(msg);
+
+  // Trigger callback to notify UI of new sensor data (throttled to 10 Hz)
+  ros2_android::PostSensorDataUpdate(std::string(UniqueId()));
 }
 
 std::string AccelerometerSensorController::GetLastMeasurementJson() {

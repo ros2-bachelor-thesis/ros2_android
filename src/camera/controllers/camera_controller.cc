@@ -2,6 +2,7 @@
 
 #include <sstream>
 
+#include "core/camera_frame_callback_queue.h"
 #include "core/log.h"
 #include "core/notification_queue.h"
 
@@ -99,6 +100,9 @@ void CameraController::OnImage(
     frame_width_ = info_image.second->width;
     frame_height_ = info_image.second->height;
   }
+
+  // Trigger callback to notify UI of new camera frame (throttled to 10 Hz)
+  ros2_android::PostCameraFrameUpdate(std::string(UniqueId()));
 }
 
 bool CameraController::GetLastFrame(std::vector<uint8_t>& out_data,

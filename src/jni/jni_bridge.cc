@@ -12,6 +12,8 @@
 #include "camera/controllers/camera_controller.h"
 #include "core/log.h"
 #include "core/notification_queue.h"
+#include "core/sensor_data_callback_queue.h"
+#include "core/camera_frame_callback_queue.h"
 #include "gps/base/gps_location_provider.h"
 #include "gps/controllers/gps_controller.h"
 #include "jni/bitmap_utils.h"
@@ -29,6 +31,14 @@
 static JavaVM *g_jvm = nullptr;
 static jobject g_notification_callback_object = nullptr;
 static jmethodID g_notification_callback_method = nullptr;
+
+// Global references for sensor data callback
+static jobject g_sensor_data_callback_object = nullptr;
+static jmethodID g_sensor_data_callback_method = nullptr;
+
+// Global references for camera frame callback
+static jobject g_camera_frame_callback_object = nullptr;
+static jmethodID g_camera_frame_callback_method = nullptr;
 
 class AndroidApp
 {
@@ -793,6 +803,146 @@ extern "C"
     g_app->gps_provider_->OnLocationUpdate(latitude, longitude, altitude,
                                            accuracy, altitude_accuracy,
                                            timestamp_ns);
+  }
+
+  JNIEXPORT void JNICALL
+  Java_com_github_mowerick_ros2_android_NativeBridge_nativeSetSensorDataCallback(
+      JNIEnv *env, jobject thiz)
+  {
+    // Clean up previous callback if it exists
+    if (g_sensor_data_callback_object != nullptr)
+    {
+      env->DeleteGlobalRef(g_sensor_data_callback_object);
+      g_sensor_data_callback_object = nullptr;
+      g_sensor_data_callback_method = nullptr;
+    }
+
+    // Store global reference to the NativeBridge object
+    g_sensor_data_callback_object = env->NewGlobalRef(thiz);
+
+    // Get the class and method ID for onSensorDataUpdate
+    jclass clazz = env->GetObjectClass(thiz);
+    g_sensor_data_callback_method = env->GetStaticMethodID(
+        clazz, "onSensorDataUpdate", "(Ljava/lang/String;)V");
+
+    if (g_sensor_data_callback_method == nullptr)
+    {
+      LOGE("Failed to find onSensorDataUpdate method");
+      env->DeleteGlobalRef(g_sensor_data_callback_object);
+      g_sensor_data_callback_object = nullptr;
+      return;
+    }
+
+    env->DeleteLocalRef(clazz);
+
+    // Set the callback in SensorDataCallbackQueue
+    ros2_android::SensorDataCallbackQueue::Instance().SetCallback(
+        [](const std::string &sensor_id)
+        {
+          if (g_jvm == nullptr || g_sensor_data_callback_object == nullptr ||
+              g_sensor_data_callback_method == nullptr)
+          {
+            return;
+          }
+
+          JNIEnv *env = nullptr;
+          bool did_attach = false;
+          int status = g_jvm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
+
+          if (status == JNI_EDETACHED)
+          {
+            if (g_jvm->AttachCurrentThread(&env, nullptr) != 0)
+            {
+              LOGE("Failed to attach thread for sensor data callback");
+              return;
+            }
+            did_attach = true;
+          }
+
+          jstring j_sensor_id = env->NewStringUTF(sensor_id.c_str());
+          jclass clazz = env->GetObjectClass(g_sensor_data_callback_object);
+          env->CallStaticVoidMethod(clazz, g_sensor_data_callback_method, j_sensor_id);
+
+          env->DeleteLocalRef(j_sensor_id);
+          env->DeleteLocalRef(clazz);
+
+          if (did_attach)
+          {
+            g_jvm->DetachCurrentThread();
+          }
+        });
+
+    LOGI("Sensor data callback registered");
+  }
+
+  JNIEXPORT void JNICALL
+  Java_com_github_mowerick_ros2_android_NativeBridge_nativeSetCameraFrameCallback(
+      JNIEnv *env, jobject thiz)
+  {
+    // Clean up previous callback if it exists
+    if (g_camera_frame_callback_object != nullptr)
+    {
+      env->DeleteGlobalRef(g_camera_frame_callback_object);
+      g_camera_frame_callback_object = nullptr;
+      g_camera_frame_callback_method = nullptr;
+    }
+
+    // Store global reference to the NativeBridge object
+    g_camera_frame_callback_object = env->NewGlobalRef(thiz);
+
+    // Get the class and method ID for onCameraFrameUpdate
+    jclass clazz = env->GetObjectClass(thiz);
+    g_camera_frame_callback_method = env->GetStaticMethodID(
+        clazz, "onCameraFrameUpdate", "(Ljava/lang/String;)V");
+
+    if (g_camera_frame_callback_method == nullptr)
+    {
+      LOGE("Failed to find onCameraFrameUpdate method");
+      env->DeleteGlobalRef(g_camera_frame_callback_object);
+      g_camera_frame_callback_object = nullptr;
+      return;
+    }
+
+    env->DeleteLocalRef(clazz);
+
+    // Set the callback in CameraFrameCallbackQueue
+    ros2_android::CameraFrameCallbackQueue::Instance().SetCallback(
+        [](const std::string &camera_id)
+        {
+          if (g_jvm == nullptr || g_camera_frame_callback_object == nullptr ||
+              g_camera_frame_callback_method == nullptr)
+          {
+            return;
+          }
+
+          JNIEnv *env = nullptr;
+          bool did_attach = false;
+          int status = g_jvm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
+
+          if (status == JNI_EDETACHED)
+          {
+            if (g_jvm->AttachCurrentThread(&env, nullptr) != 0)
+            {
+              LOGE("Failed to attach thread for camera frame callback");
+              return;
+            }
+            did_attach = true;
+          }
+
+          jstring j_camera_id = env->NewStringUTF(camera_id.c_str());
+          jclass clazz = env->GetObjectClass(g_camera_frame_callback_object);
+          env->CallStaticVoidMethod(clazz, g_camera_frame_callback_method, j_camera_id);
+
+          env->DeleteLocalRef(j_camera_id);
+          env->DeleteLocalRef(clazz);
+
+          if (did_attach)
+          {
+            g_jvm->DetachCurrentThread();
+          }
+        });
+
+    LOGI("Camera frame callback registered");
   }
 
 } // extern "C"
