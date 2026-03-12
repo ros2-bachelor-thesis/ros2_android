@@ -104,17 +104,6 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
                 gpsManager.stop()
             }
         )
-
-        // Auto-dismiss expired notifications
-        viewModelScope.launch {
-            while (true) {
-                delay(1000)
-                val now = System.currentTimeMillis()
-                _notifications.value = _notifications.value.filter {
-                    now - it.timestampMs < 5000
-                }
-            }
-        }
     }
 
     private fun addNotification(message: String, severity: Severity) {
@@ -128,6 +117,12 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
         // Combine with existing non-expired, cap visible list
         val existing = _notifications.value.filter { now - it.timestampMs < 5000 }
         _notifications.value = (existing + notification).takeLast(50)
+
+        // Schedule auto-dismiss for this notification after 5 seconds
+        viewModelScope.launch {
+            delay(5000)
+            _notifications.value = _notifications.value.filter { it.id != notification.id }
+        }
     }
 
     fun dismissNotification(id: Long) {
