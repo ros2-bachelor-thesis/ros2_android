@@ -142,7 +142,9 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
                 ifaces.add(arr.getString(i))
             }
             _networkInterfaces.value = ifaces
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            android.util.Log.e("RosViewModel", "Failed to load network interfaces", e)
+        }
     }
 
     fun refreshNetworkInterfaces() {
@@ -150,7 +152,9 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
             val ifaces = MainActivity.queryNetworkInterfaces()
             NativeBridge.nativeSetNetworkInterfaces(ifaces)
             loadNetworkInterfaces()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            android.util.Log.e("RosViewModel", "Failed to refresh network interfaces", e)
+        }
     }
 
     fun setDomainId(id: Int) {
@@ -270,7 +274,9 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
                 }
             }
             multicastLock = null
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            android.util.Log.e("RosViewModel", "Failed to release multicast lock", e)
+        }
     }
 
     override fun onCleared() {
@@ -510,7 +516,9 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
                 )
             }
             _sensors.value = list
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            android.util.Log.e("RosViewModel", "Failed to refresh sensors", e)
+        }
     }
 
     private fun refreshCameras() {
@@ -537,7 +545,9 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
                 )
             }
             _cameras.value = list
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            android.util.Log.e("RosViewModel", "Failed to refresh cameras", e)
+        }
     }
 
     private fun startPolling(uniqueId: String) {
@@ -558,7 +568,9 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
                             unit = obj.getString("unit")
                         )
                     }
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    android.util.Log.e("RosViewModel", "Failed to poll sensor data for $uniqueId", e)
+                }
                 delay(100)
             }
         }
@@ -600,7 +612,9 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
                             _cameraFrame.value = bitmap
                         }
                     }
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    android.util.Log.e("RosViewModel", "Failed to get camera frame for $uniqueId", e)
+                }
                 delay(100)
             }
         }
@@ -628,7 +642,9 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
                     } catch (_: UnsatisfiedLinkError) {
                         _isProbing.value = false
                         return@launch
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        android.util.Log.e("RosViewModel", "Failed to probe topics", e)
+                    }
                     delay(2000)
                 }
             }
