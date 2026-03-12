@@ -77,6 +77,12 @@ std::string CameraController::GetLastMeasurementJson() {
   return ss.str();
 }
 
+bool CameraController::GetLastMeasurement(jni::SensorReadingData& out_data) {
+  // Cameras don't provide sensor readings, only images
+  // Return false to indicate no sensor data available
+  return false;
+}
+
 void CameraController::OnImage(
     const std::pair<CameraInfo::UniquePtr, Image::UniquePtr>& info_image) {
   LOGI("Controller::OnImage - received image %dx%d",

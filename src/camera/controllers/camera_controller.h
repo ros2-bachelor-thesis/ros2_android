@@ -21,6 +21,7 @@ class CameraController : public SensorDataProvider {
 
   std::string PrettyName() const override;
   std::string GetLastMeasurementJson() override;
+  bool GetLastMeasurement(jni::SensorReadingData& out_data) override;
 
   void EnableCamera();
   void DisableCamera();

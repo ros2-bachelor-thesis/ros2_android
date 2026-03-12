@@ -15,6 +15,7 @@
 #include "gps/base/gps_location_provider.h"
 #include "gps/controllers/gps_controller.h"
 #include "jni/bitmap_utils.h"
+#include "jni/jni_object_utils.h"
 #include "jni/jvm.h"
 #include "ros/ros_interface.h"
 #include "sensors/base/sensor_data_provider.h"
@@ -262,6 +263,77 @@ public:
     return ss.str();
   }
 
+  // Structured data getters (replacing JSON)
+  std::vector<ros2_android::jni::SensorInfoData> GetSensorList()
+  {
+    std::vector<ros2_android::jni::SensorInfoData> result;
+    for (auto& c : controllers_)
+    {
+      ros2_android::jni::SensorInfoData data;
+      data.uniqueId = c->UniqueId();
+      data.prettyName = c->PrettyName();
+      data.sensorName = c->SensorName();
+      data.vendor = c->SensorVendor();
+      data.topicName = c->TopicName();
+      data.topicType = c->TopicType();
+      data.enabled = c->IsEnabled();
+      result.push_back(data);
+    }
+    return result;
+  }
+
+  std::vector<ros2_android::jni::CameraInfoData> GetCameraList()
+  {
+    std::vector<ros2_android::jni::CameraInfoData> result;
+    for (auto& c : camera_controllers_)
+    {
+      ros2_android::jni::CameraInfoData data;
+      auto [width, height] = c->GetResolution();
+      data.uniqueId = c->UniqueId();
+      data.name = c->GetCameraName();
+      data.enabled = c->IsEnabled();
+      data.imageTopicName = c->ImageTopicName();
+      data.imageTopicType = c->ImageTopicType();
+      data.infoTopicName = c->InfoTopicName();
+      data.infoTopicType = c->InfoTopicType();
+      data.resolutionWidth = width;
+      data.resolutionHeight = height;
+      data.isFrontFacing = c->IsFrontFacing();
+      data.sensorOrientation = c->SensorOrientation();
+      result.push_back(data);
+    }
+    return result;
+  }
+
+  bool GetSensorData(const std::string& unique_id, ros2_android::jni::SensorReadingData& out_data)
+  {
+    for (auto& c : controllers_)
+    {
+      if (unique_id == c->UniqueId())
+      {
+        return c->GetLastMeasurement(out_data);
+      }
+    }
+    return false;
+  }
+
+  std::vector<std::string> GetDiscoveredTopics()
+  {
+    std::vector<std::string> result;
+    if (!ros_.Initialized())
+      return result;
+    auto node = ros_.get_node();
+    if (!node)
+      return result;
+
+    auto topics = node->get_topic_names_and_types();
+    for (const auto& [name, types] : topics)
+    {
+      result.push_back(name);
+    }
+    return result;
+  }
+
   bool GetCameraFrameBytes(const std::string &unique_id,
                            std::vector<uint8_t> &out_data, int &out_width,
                            int &out_height)
@@ -465,37 +537,44 @@ extern "C"
     g_app->StopRos();
   }
 
-  JNIEXPORT jstring JNICALL
+  JNIEXPORT jobjectArray JNICALL
   Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetSensorList(
       JNIEnv *env, jobject /*thiz*/)
   {
-    if (!g_app)
-      return env->NewStringUTF("[]");
-    std::string json = g_app->GetSensorListJson();
-    return env->NewStringUTF(json.c_str());
+    if (!g_app) {
+      return ros2_android::jni::CreateSensorInfoArray(env, {});
+    }
+    auto sensors = g_app->GetSensorList();
+    return ros2_android::jni::CreateSensorInfoArray(env, sensors);
   }
 
-  JNIEXPORT jstring JNICALL
+  JNIEXPORT jobject JNICALL
   Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetSensorData(
       JNIEnv *env, jobject /*thiz*/, jstring unique_id)
   {
     if (!g_app)
-      return env->NewStringUTF("{}");
+      return nullptr;
 
     const char *id = env->GetStringUTFChars(unique_id, nullptr);
-    std::string json = g_app->GetSensorDataJson(std::string(id));
+    ros2_android::jni::SensorReadingData data;
+    bool success = g_app->GetSensorData(std::string(id), data);
     env->ReleaseStringUTFChars(unique_id, id);
-    return env->NewStringUTF(json.c_str());
+
+    if (!success)
+      return nullptr;
+
+    return ros2_android::jni::CreateSensorReading(env, data);
   }
 
-  JNIEXPORT jstring JNICALL
+  JNIEXPORT jobjectArray JNICALL
   Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetCameraList(
       JNIEnv *env, jobject /*thiz*/)
   {
-    if (!g_app)
-      return env->NewStringUTF("[]");
-    std::string json = g_app->GetCameraListJson();
-    return env->NewStringUTF(json.c_str());
+    if (!g_app) {
+      return ros2_android::jni::CreateCameraInfoArray(env, {});
+    }
+    auto cameras = g_app->GetCameraList();
+    return ros2_android::jni::CreateCameraInfoArray(env, cameras);
   }
 
   JNIEXPORT void JNICALL
@@ -546,33 +625,25 @@ extern "C"
     env->ReleaseStringUTFChars(unique_id, id);
   }
 
-  JNIEXPORT jstring JNICALL
+  JNIEXPORT jobjectArray JNICALL
   Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetNetworkInterfaces(
       JNIEnv *env, jobject /*thiz*/)
   {
-    if (!g_app)
-      return env->NewStringUTF("[]");
-
-    std::ostringstream ss;
-    ss << "[";
-    for (size_t i = 0; i < g_app->network_interfaces_.size(); ++i)
-    {
-      if (i > 0)
-        ss << ",";
-      ss << "\"" << g_app->network_interfaces_[i] << "\"";
+    if (!g_app) {
+      return ros2_android::jni::CreateStringArray(env, {});
     }
-    ss << "]";
-    return env->NewStringUTF(ss.str().c_str());
+    return ros2_android::jni::CreateStringArray(env, g_app->network_interfaces_);
   }
 
-  JNIEXPORT jstring JNICALL
+  JNIEXPORT jobjectArray JNICALL
   Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetDiscoveredTopics(
       JNIEnv *env, jobject /*thiz*/)
   {
-    if (!g_app)
-      return env->NewStringUTF("[]");
-    std::string json = g_app->GetDiscoveredTopicsJson();
-    return env->NewStringUTF(json.c_str());
+    if (!g_app) {
+      return ros2_android::jni::CreateStringArray(env, {});
+    }
+    auto topics = g_app->GetDiscoveredTopics();
+    return ros2_android::jni::CreateStringArray(env, topics);
   }
 
   JNIEXPORT jobject JNICALL

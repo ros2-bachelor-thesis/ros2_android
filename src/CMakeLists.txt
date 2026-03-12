@@ -15,6 +15,7 @@ add_library(android-ros SHARED
   jni/jni_bridge.cc
   jni/jvm.cc
   jni/bitmap_utils.cc
+  jni/jni_object_utils.cc
 
   # ROS interface
   ros/ros_interface.cc

@@ -1,6 +1,9 @@
 package com.github.mowerick.ros2.android
 
 import android.graphics.Bitmap
+import com.github.mowerick.ros2.android.model.CameraInfo
+import com.github.mowerick.ros2.android.model.SensorInfo
+import com.github.mowerick.ros2.android.model.SensorReading
 
 object NativeBridge {
     init {
@@ -18,15 +21,15 @@ object NativeBridge {
 
     external fun nativeStartRos(domainId: Int, networkInterface: String)
     external fun nativeStopRos()
-    external fun nativeGetSensorList(): String
-    external fun nativeGetSensorData(uniqueId: String): String
-    external fun nativeGetCameraList(): String
+    external fun nativeGetSensorList(): Array<SensorInfo>
+    external fun nativeGetSensorData(uniqueId: String): SensorReading?
+    external fun nativeGetCameraList(): Array<CameraInfo>
     external fun nativeEnableCamera(uniqueId: String)
     external fun nativeDisableCamera(uniqueId: String)
     external fun nativeEnableSensor(uniqueId: String)
     external fun nativeDisableSensor(uniqueId: String)
-    external fun nativeGetNetworkInterfaces(): String
-    external fun nativeGetDiscoveredTopics(): String
+    external fun nativeGetNetworkInterfaces(): Array<String>
+    external fun nativeGetDiscoveredTopics(): Array<String>
     external fun nativeGetCameraFrame(uniqueId: String): Bitmap?
     external fun nativeGetPendingNotifications(): String
     external fun nativeSetNotificationCallback()

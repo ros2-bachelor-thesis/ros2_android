@@ -33,6 +33,13 @@ std::string AccelerometerSensorController::GetLastMeasurementJson() {
   return ss.str();
 }
 
+bool AccelerometerSensorController::GetLastMeasurement(jni::SensorReadingData& out_data) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  out_data.values = {last_msg_.accel.linear.x, last_msg_.accel.linear.y, last_msg_.accel.linear.z};
+  out_data.unit = "m/s^2";
+  return true;
+}
+
 std::string AccelerometerSensorController::PrettyName() const {
   return "Accelerometer Sensor";
 }

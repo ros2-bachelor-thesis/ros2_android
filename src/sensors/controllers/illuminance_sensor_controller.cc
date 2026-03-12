@@ -33,6 +33,13 @@ std::string IlluminanceSensorController::GetLastMeasurementJson() {
   return ss.str();
 }
 
+bool IlluminanceSensorController::GetLastMeasurement(jni::SensorReadingData& out_data) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  out_data.values = {last_msg_.illuminance};
+  out_data.unit = "lx";
+  return true;
+}
+
 std::string IlluminanceSensorController::PrettyName() const {
   return "Light Sensor";
 }

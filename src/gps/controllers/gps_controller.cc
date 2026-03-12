@@ -43,6 +43,17 @@ std::string GpsController::GetLastMeasurementJson() {
   return ss.str();
 }
 
+bool GpsController::GetLastMeasurement(jni::SensorReadingData& out_data) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  // Check if we have valid GPS data (non-zero coordinates)
+  if (last_msg_.latitude == 0.0 && last_msg_.longitude == 0.0) {
+    return false;  // No data yet
+  }
+  out_data.values = {last_msg_.latitude, last_msg_.longitude, last_msg_.altitude};
+  out_data.unit = "°";
+  return true;
+}
+
 std::string GpsController::PrettyName() const { return "GPS Location"; }
 
 void GpsController::Enable() {

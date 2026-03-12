@@ -33,6 +33,13 @@ std::string GyroscopeSensorController::GetLastMeasurementJson() {
   return ss.str();
 }
 
+bool GyroscopeSensorController::GetLastMeasurement(jni::SensorReadingData& out_data) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  out_data.values = {last_msg_.twist.angular.x, last_msg_.twist.angular.y, last_msg_.twist.angular.z};
+  out_data.unit = "rad/s";
+  return true;
+}
+
 std::string GyroscopeSensorController::PrettyName() const {
   return "Gyroscope Sensor";
 }

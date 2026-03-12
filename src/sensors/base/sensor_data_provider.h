@@ -2,6 +2,7 @@
 
 #include <mutex>
 #include <string>
+#include "jni/jni_object_utils.h"
 
 namespace ros2_android {
 
@@ -12,6 +13,7 @@ class SensorDataProvider {
 
   virtual std::string PrettyName() const = 0;
   virtual std::string GetLastMeasurementJson() = 0;
+  virtual bool GetLastMeasurement(jni::SensorReadingData& out_data) = 0;
 
   virtual const char* SensorName() const { return ""; }
   virtual const char* SensorVendor() const { return ""; }

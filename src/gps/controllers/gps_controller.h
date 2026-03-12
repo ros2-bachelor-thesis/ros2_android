@@ -23,6 +23,7 @@ class GpsController : public SensorDataProvider {
 
   std::string PrettyName() const override;
   std::string GetLastMeasurementJson() override;
+  bool GetLastMeasurement(jni::SensorReadingData& out_data) override;
 
   const char* SensorName() const override { return "GPS Location"; }
   const char* SensorVendor() const override { return "FusedLocationProvider"; }

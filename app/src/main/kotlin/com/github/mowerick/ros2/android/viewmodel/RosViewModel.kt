@@ -23,8 +23,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import org.json.JSONArray
-import org.json.JSONObject
 
 sealed class Screen {
     data object Dashboard : Screen()
@@ -149,13 +147,8 @@ class RosViewModel(
 
     fun loadNetworkInterfaces() {
         try {
-            val json = NativeBridge.nativeGetNetworkInterfaces()
-            val arr = JSONArray(json)
-            val ifaces = mutableListOf<String>()
-            for (i in 0 until arr.length()) {
-                ifaces.add(arr.getString(i))
-            }
-            _networkInterfaces.value = ifaces
+            val ifaces = NativeBridge.nativeGetNetworkInterfaces()
+            _networkInterfaces.value = ifaces.toList()
         } catch (e: Exception) {
             android.util.Log.e("RosViewModel", "Failed to load network interfaces", e)
         }
@@ -344,24 +337,8 @@ class RosViewModel(
 
     private fun refreshSensors() {
         try {
-            val json = NativeBridge.nativeGetSensorList()
-            val arr = JSONArray(json)
-            val list = mutableListOf<SensorInfo>()
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                list.add(
-                    SensorInfo(
-                        uniqueId = obj.getString("uniqueId"),
-                        prettyName = obj.getString("prettyName"),
-                        sensorName = obj.getString("sensorName"),
-                        vendor = obj.getString("vendor"),
-                        topicName = obj.getString("topicName"),
-                        topicType = obj.getString("topicType"),
-                        enabled = obj.optBoolean("enabled", false)
-                    )
-                )
-            }
-            _sensors.value = list
+            val sensors = NativeBridge.nativeGetSensorList()
+            _sensors.value = sensors.toList()
         } catch (e: Exception) {
             android.util.Log.e("RosViewModel", "Failed to refresh sensors", e)
         }
@@ -369,28 +346,8 @@ class RosViewModel(
 
     private fun refreshCameras() {
         try {
-            val json = NativeBridge.nativeGetCameraList()
-            val arr = JSONArray(json)
-            val list = mutableListOf<CameraInfo>()
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                list.add(
-                    CameraInfo(
-                        uniqueId = obj.getString("uniqueId"),
-                        name = obj.getString("name"),
-                        enabled = obj.getBoolean("enabled"),
-                        imageTopicName = obj.getString("imageTopicName"),
-                        imageTopicType = obj.getString("imageTopicType"),
-                        infoTopicName = obj.getString("infoTopicName"),
-                        infoTopicType = obj.getString("infoTopicType"),
-                        resolutionWidth = obj.getInt("resolutionWidth"),
-                        resolutionHeight = obj.getInt("resolutionHeight"),
-                        isFrontFacing = obj.optBoolean("isFrontFacing", false),
-                        sensorOrientation = obj.optInt("sensorOrientation", 0)
-                    )
-                )
-            }
-            _cameras.value = list
+            val cameras = NativeBridge.nativeGetCameraList()
+            _cameras.value = cameras.toList()
         } catch (e: Exception) {
             android.util.Log.e("RosViewModel", "Failed to refresh cameras", e)
         }
@@ -401,19 +358,8 @@ class RosViewModel(
         viewModelScope.launch {
             while (polling) {
                 try {
-                    val json = NativeBridge.nativeGetSensorData(uniqueId)
-                    val obj = JSONObject(json)
-                    if (obj.has("values")) {
-                        val valuesArr = obj.getJSONArray("values")
-                        val values = mutableListOf<Double>()
-                        for (i in 0 until valuesArr.length()) {
-                            values.add(valuesArr.getDouble(i))
-                        }
-                        _currentReading.value = SensorReading(
-                            values = values,
-                            unit = obj.getString("unit")
-                        )
-                    }
+                    val reading = NativeBridge.nativeGetSensorData(uniqueId)
+                    _currentReading.value = reading
                 } catch (e: Exception) {
                     android.util.Log.e("RosViewModel", "Failed to poll sensor data for $uniqueId", e)
                 }
@@ -454,14 +400,9 @@ class RosViewModel(
             viewModelScope.launch {
                 while (_isProbing.value) {
                     try {
-                        val json = NativeBridge.nativeGetDiscoveredTopics()
-                        val arr = JSONArray(json)
-                        val topics = mutableSetOf<String>()
-                        for (i in 0 until arr.length()) {
-                            topics.add(arr.getString(i))
-                        }
-                        _discoveredTopics.value = topics
-                        updateExternalNodeStates(topics)
+                        val topics = NativeBridge.nativeGetDiscoveredTopics()
+                        _discoveredTopics.value = topics.toSet()
+                        updateExternalNodeStates(topics.toSet())
                     } catch (_: UnsatisfiedLinkError) {
                         _isProbing.value = false
                         return@launch

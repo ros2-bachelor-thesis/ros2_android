@@ -32,6 +32,13 @@ std::string BarometerSensorController::GetLastMeasurementJson() {
   return ss.str();
 }
 
+bool BarometerSensorController::GetLastMeasurement(jni::SensorReadingData& out_data) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  out_data.values = {last_msg_.fluid_pressure};
+  out_data.unit = "Pa";
+  return true;
+}
+
 std::string BarometerSensorController::PrettyName() const {
   return "Barometer Sensor";
 }

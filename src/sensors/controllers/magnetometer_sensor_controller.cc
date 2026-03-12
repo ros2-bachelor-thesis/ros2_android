@@ -35,6 +35,17 @@ std::string MagnetometerSensorController::GetLastMeasurementJson() {
   return ss.str();
 }
 
+bool MagnetometerSensorController::GetLastMeasurement(jni::SensorReadingData& out_data) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  out_data.values = {
+    last_msg_.magnetic_field.x * kMicroTeslaPerTesla,
+    last_msg_.magnetic_field.y * kMicroTeslaPerTesla,
+    last_msg_.magnetic_field.z * kMicroTeslaPerTesla
+  };
+  out_data.unit = "uT";
+  return true;
+}
+
 std::string MagnetometerSensorController::PrettyName() const {
   return "Magnetometer Sensor";
 }

@@ -17,6 +17,7 @@ class AccelerometerSensorController : public SensorDataProvider {
 
   std::string PrettyName() const override;
   std::string GetLastMeasurementJson() override;
+  bool GetLastMeasurement(jni::SensorReadingData& out_data) override;
 
   const char* SensorName() const override { return sensor_->Descriptor().name; }
   const char* SensorVendor() const override { return sensor_->Descriptor().vendor; }
