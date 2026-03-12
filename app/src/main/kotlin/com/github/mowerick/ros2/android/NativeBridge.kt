@@ -1,5 +1,7 @@
 package com.github.mowerick.ros2.android
 
+import android.graphics.Bitmap
+
 object NativeBridge {
     init {
         System.loadLibrary("android-ros")
@@ -25,7 +27,7 @@ object NativeBridge {
     external fun nativeDisableSensor(uniqueId: String)
     external fun nativeGetNetworkInterfaces(): String
     external fun nativeGetDiscoveredTopics(): String
-    external fun nativeGetCameraFrame(uniqueId: String): ByteArray?
+    external fun nativeGetCameraFrame(uniqueId: String): Bitmap?
     external fun nativeGetPendingNotifications(): String
     external fun nativeSetNotificationCallback()
     external fun nativeOnGpsLocation(

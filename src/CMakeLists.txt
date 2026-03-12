@@ -14,6 +14,7 @@ add_library(android-ros SHARED
   # JNI layer
   jni/jni_bridge.cc
   jni/jvm.cc
+  jni/bitmap_utils.cc
 
   # ROS interface
   ros/ros_interface.cc
@@ -56,6 +57,7 @@ target_link_libraries(android-ros PRIVATE
     camera2ndk
     mediandk
     log
+    jnigraphics
     rclcpp::rclcpp
     ${geometry_msgs_TARGETS}
     ${sensor_msgs_TARGETS})

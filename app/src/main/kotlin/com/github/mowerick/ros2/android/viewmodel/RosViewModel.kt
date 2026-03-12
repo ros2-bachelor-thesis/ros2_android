@@ -432,32 +432,9 @@ class RosViewModel(
         viewModelScope.launch {
             while (cameraPreviewPolling) {
                 try {
-                    val bytes = NativeBridge.nativeGetCameraFrame(uniqueId)
-                    if (bytes != null && bytes.size > 8) {
-                        val width = ((bytes[0].toInt() and 0xFF) shl 24) or
-                            ((bytes[1].toInt() and 0xFF) shl 16) or
-                            ((bytes[2].toInt() and 0xFF) shl 8) or
-                            (bytes[3].toInt() and 0xFF)
-                        val height = ((bytes[4].toInt() and 0xFF) shl 24) or
-                            ((bytes[5].toInt() and 0xFF) shl 16) or
-                            ((bytes[6].toInt() and 0xFF) shl 8) or
-                            (bytes[7].toInt() and 0xFF)
-                        val pixelCount = width * height
-                        val expectedSize = 8 + pixelCount * 3
-                        if (bytes.size >= expectedSize && width > 0 && height > 0) {
-                            val pixels = IntArray(pixelCount)
-                            for (i in 0 until pixelCount) {
-                                val offset = 8 + i * 3
-                                val r = bytes[offset].toInt() and 0xFF
-                                val g = bytes[offset + 1].toInt() and 0xFF
-                                val b = bytes[offset + 2].toInt() and 0xFF
-                                pixels[i] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
-                            }
-                            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                            bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
-                            _cameraFrame.value = bitmap
-                        }
-                    }
+                    // Native code now returns Bitmap directly (no manual parsing needed)
+                    val bitmap = NativeBridge.nativeGetCameraFrame(uniqueId)
+                    _cameraFrame.value = bitmap
                 } catch (e: Exception) {
                     android.util.Log.e("RosViewModel", "Failed to get camera frame for $uniqueId", e)
                 }

@@ -14,6 +14,7 @@
 #include "core/notification_queue.h"
 #include "gps/base/gps_location_provider.h"
 #include "gps/controllers/gps_controller.h"
+#include "jni/bitmap_utils.h"
 #include "jni/jvm.h"
 #include "ros/ros_interface.h"
 #include "sensors/base/sensor_data_provider.h"
@@ -574,7 +575,7 @@ extern "C"
     return env->NewStringUTF(json.c_str());
   }
 
-  JNIEXPORT jbyteArray JNICALL
+  JNIEXPORT jobject JNICALL
   Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetCameraFrame(
       JNIEnv *env, jobject /*thiz*/, jstring unique_id)
   {
@@ -590,27 +591,8 @@ extern "C"
     if (!ok || data.empty())
       return nullptr;
 
-    size_t total = 8 + data.size();
-    jbyteArray result = env->NewByteArray(static_cast<jsize>(total));
-    if (!result)
-      return nullptr;
-
-    // Prepend width and height as 2x int32 big-endian (8 bytes header)
-    uint8_t header[8];
-    header[0] = (width >> 24) & 0xFF;
-    header[1] = (width >> 16) & 0xFF;
-    header[2] = (width >> 8) & 0xFF;
-    header[3] = width & 0xFF;
-    header[4] = (height >> 24) & 0xFF;
-    header[5] = (height >> 16) & 0xFF;
-    header[6] = (height >> 8) & 0xFF;
-    header[7] = height & 0xFF;
-
-    env->SetByteArrayRegion(result, 0, 8,
-                            reinterpret_cast<const jbyte *>(header));
-    env->SetByteArrayRegion(result, 8, static_cast<jsize>(data.size()),
-                            reinterpret_cast<const jbyte *>(data.data()));
-    return result;
+    // Use bitmap utility to create Android Bitmap directly
+    return ros2_android::jni::CreateBitmapFromRGB(env, data.data(), width, height);
   }
 
   JNIEXPORT jstring JNICALL
