@@ -30,9 +30,9 @@ sealed class Screen {
     data object RosSetup : Screen()
     data object BuiltInSensors : Screen()
     data object Subsystem : Screen()
-    data class SensorDetail(val sensor: SensorInfo) : Screen()
-    data class CameraDetail(val camera: CameraInfo) : Screen()
-    data class NodeDetail(val node: PipelineNode) : Screen()
+    data class SensorDetail(val sensorId: String) : Screen()
+    data class CameraDetail(val cameraId: String) : Screen()
+    data class NodeDetail(val nodeId: String) : Screen()
 }
 
 class RosViewModel(private val applicationContext: Context) : ViewModel() {
@@ -230,7 +230,6 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
             android.util.Log.i("RosViewModel", "Completing GPS sensor enable after location settings enabled")
             NativeBridge.nativeEnableSensor("gps_location_provider")
             refreshSensors()
-            updateSensorDetailScreen("gps_location_provider")
         } else {
             // GPS was already enabled, just start updates
             android.util.Log.i("RosViewModel", "GPS already enabled, starting location updates")
@@ -299,12 +298,12 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
 
     fun navigateToSensor(sensor: SensorInfo) {
         _currentReading.value = null
-        _screen.value = Screen.SensorDetail(sensor)
+        _screen.value = Screen.SensorDetail(sensor.uniqueId)
         startPolling(sensor.uniqueId)
     }
 
     fun navigateToCamera(camera: CameraInfo) {
-        _screen.value = Screen.CameraDetail(camera)
+        _screen.value = Screen.CameraDetail(camera.uniqueId)
         if (camera.enabled) {
             startCameraPreview(camera.uniqueId)
         }
@@ -313,7 +312,7 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
     // -- Pipeline node navigation --
 
     fun navigateToNode(node: PipelineNode) {
-        _screen.value = Screen.NodeDetail(node)
+        _screen.value = Screen.NodeDetail(node.id)
     }
 
     fun isNodeStartable(nodeId: String): Boolean {
@@ -324,15 +323,6 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
     fun toggleNodeState(nodeId: String) {
         val graph = NodeDependencyGraph(_pipelineNodes.value)
         _pipelineNodes.value = graph.toggleNodeState(nodeId)
-
-        // Update NodeDetail screen if currently viewing an affected node
-        val current = _screen.value
-        if (current is Screen.NodeDetail) {
-            val updated = _pipelineNodes.value.find { it.id == current.node.id }
-            if (updated != null) {
-                _screen.value = Screen.NodeDetail(updated)
-            }
-        }
     }
 
     // -- Back navigation --
@@ -360,7 +350,6 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
     fun enableCamera(uniqueId: String) {
         NativeBridge.nativeEnableCamera(uniqueId)
         refreshCameras()
-        updateCameraDetailScreen(uniqueId)
         startCameraPreview(uniqueId)
     }
 
@@ -368,7 +357,6 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
         stopCameraPreview()
         NativeBridge.nativeDisableCamera(uniqueId)
         refreshCameras()
-        updateCameraDetailScreen(uniqueId)
     }
 
     fun enableSensor(uniqueId: String) {
@@ -397,7 +385,6 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
                         // Settings OK, proceed with enable
                         NativeBridge.nativeEnableSensor(uniqueId)
                         refreshSensors()
-                        updateSensorDetailScreen(uniqueId)
                     },
                     onFailure = {
                         android.util.Log.e("RosViewModel", "GPS: Location settings check failed")
@@ -409,20 +396,17 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
                 // No launcher available, proceed anyway (GPS manager will handle it)
                 NativeBridge.nativeEnableSensor(uniqueId)
                 refreshSensors()
-                updateSensorDetailScreen(uniqueId)
             }
         } else {
             // Non-GPS sensors: enable directly
             NativeBridge.nativeEnableSensor(uniqueId)
             refreshSensors()
-            updateSensorDetailScreen(uniqueId)
         }
     }
 
     fun disableSensor(uniqueId: String) {
         NativeBridge.nativeDisableSensor(uniqueId)
         refreshSensors()
-        updateSensorDetailScreen(uniqueId)
     }
 
     fun onLocationPermissionGranted() {
@@ -432,26 +416,6 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
     }
 
     // -- Private helpers --
-
-    private fun updateSensorDetailScreen(uniqueId: String) {
-        val current = _screen.value
-        if (current is Screen.SensorDetail && current.sensor.uniqueId == uniqueId) {
-            val updated = _sensors.value.find { it.uniqueId == uniqueId }
-            if (updated != null) {
-                _screen.value = Screen.SensorDetail(updated)
-            }
-        }
-    }
-
-    private fun updateCameraDetailScreen(uniqueId: String) {
-        val current = _screen.value
-        if (current is Screen.CameraDetail && current.camera.uniqueId == uniqueId) {
-            val updated = _cameras.value.find { it.uniqueId == uniqueId }
-            if (updated != null) {
-                _screen.value = Screen.CameraDetail(updated)
-            }
-        }
-    }
 
     private fun refreshSensorsAndCameras() {
         refreshSensors()
@@ -624,14 +588,6 @@ class RosViewModel(private val applicationContext: Context) : ViewModel() {
             for (ext in stoppedExternals) {
                 val cascadeGraph = NodeDependencyGraph(_pipelineNodes.value)
                 _pipelineNodes.value = cascadeGraph.cascadeStop(ext.id)
-            }
-            // Refresh NodeDetail if viewing a node
-            val current = _screen.value
-            if (current is Screen.NodeDetail) {
-                val refreshed = _pipelineNodes.value.find { it.id == current.node.id }
-                if (refreshed != null && refreshed != current.node) {
-                    _screen.value = Screen.NodeDetail(refreshed)
-                }
             }
         }
     }

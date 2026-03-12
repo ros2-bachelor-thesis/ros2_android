@@ -185,20 +185,30 @@ class MainActivity : ComponentActivity() {
                             else vm.disableCamera(camera.uniqueId)
                         }
                     )
-                    is Screen.SensorDetail -> SensorDetailScreen(
-                        sensor = s.sensor,
-                        reading = reading,
-                        onBack = { vm.navigateBack() },
-                        onEnable = { vm.enableSensor(s.sensor.uniqueId) },
-                        onDisable = { vm.disableSensor(s.sensor.uniqueId) }
-                    )
-                    is Screen.CameraDetail -> CameraDetailScreen(
-                        camera = s.camera,
-                        cameraFrame = cameraFrame,
-                        onBack = { vm.navigateBack() },
-                        onEnable = { vm.enableCamera(s.camera.uniqueId) },
-                        onDisable = { vm.disableCamera(s.camera.uniqueId) }
-                    )
+                    is Screen.SensorDetail -> {
+                        val sensor = sensors.find { it.uniqueId == s.sensorId }
+                        if (sensor != null) {
+                            SensorDetailScreen(
+                                sensor = sensor,
+                                reading = reading,
+                                onBack = { vm.navigateBack() },
+                                onEnable = { vm.enableSensor(sensor.uniqueId) },
+                                onDisable = { vm.disableSensor(sensor.uniqueId) }
+                            )
+                        }
+                    }
+                    is Screen.CameraDetail -> {
+                        val camera = cameras.find { it.uniqueId == s.cameraId }
+                        if (camera != null) {
+                            CameraDetailScreen(
+                                camera = camera,
+                                cameraFrame = cameraFrame,
+                                onBack = { vm.navigateBack() },
+                                onEnable = { vm.enableCamera(camera.uniqueId) },
+                                onDisable = { vm.disableCamera(camera.uniqueId) }
+                            )
+                        }
+                    }
                     is Screen.Subsystem -> SubsystemScreen(
                         nodes = pipelineNodes,
                         onBack = { vm.navigateBack() },
@@ -208,12 +218,17 @@ class MainActivity : ComponentActivity() {
                         isProbing = isProbing,
                         onToggleProbing = { vm.toggleTopicProbing() }
                     )
-                    is Screen.NodeDetail -> NodeDetailScreen(
-                        node = s.node,
-                        canStart = vm.isNodeStartable(s.node.id),
-                        onBack = { vm.navigateBack() },
-                        onStartStop = { vm.toggleNodeState(s.node.id) }
-                    )
+                    is Screen.NodeDetail -> {
+                        val node = pipelineNodes.find { it.id == s.nodeId }
+                        if (node != null) {
+                            NodeDetailScreen(
+                                node = node,
+                                canStart = vm.isNodeStartable(node.id),
+                                onBack = { vm.navigateBack() },
+                                onStartStop = { vm.toggleNodeState(node.id) }
+                            )
+                        }
+                    }
                 }
                 NotificationOverlay(
                     notifications = activeNotifications,
