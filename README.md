@@ -8,19 +8,20 @@ Target: Android 13 (API 33), NDK 25.1.
 
 ### Implemented
 
-- **Built-in sensor publishers** - accelerometer, barometer, gyroscope, illuminance, magnetometer published as ROS 2 topics
-- **Camera publisher** - device cameras published as `sensor_msgs/Image`
+- **Built-in sensor publishers** - accelerometer, barometer, gyroscope, illuminance, magnetometer, GPS location published as ROS 2 topics
+- **Camera publisher** - front and rear device cameras published as `sensor_msgs/Image` (raw BGR8) and `sensor_msgs/CompressedImage` (JPEG)
+- **Wi-Fi multicast / DDS discovery** - `MulticastLock` to enable DDS multicast on Android Wi-Fi
 - **DDS domain selection** - configurable `ROS_DOMAIN_ID` and network interface for DDS discovery
-- **Jetpack Compose UI** - sensor list, live sensor data view, camera preview
+- **Event-driven architecture** - JNI callbacks for sensor data and camera frames (zero polling overhead)
+- **Jetpack Compose UI** - sensor list, live sensor data view, camera preview, node pipeline management
 
 ### Planned
 
-- **Wi-Fi multicast / DDS discovery** - `MulticastLock` to enable DDS multicast on Android Wi-Fi
 - **USB camera** - external USB cameras via libusb/libuvc with JNI file descriptor handoff, published as `sensor_msgs/Image`
 - **USB LiDAR** - YDLIDAR SDK integration via JNI fd handoff, published as `sensor_msgs/LaserScan`
 - **DDS-Security** - OpenSSL static linking (hidden visibility to avoid BoringSSL collision), Cyclone DDS security plugins, SROS2 credentials
 - **Subscriber and in-app visualization** - subscribe to `sensor_msgs/Image` topics and render in the Android UI (replacing rviz, which is infeasible due to Qt5/Ogre3D dependencies)
-- **YOLO object detection** - on-device inference via NCNN, subscribing to `stereo_image_data` and publishing `object_xyz_pos`
+- **YOLO object detection** - on-device inference via NCNN, subscribing to camera topics and publishing object detections
 - **micro-ROS Agent** - hosting the agent on Android to bridge ROS 2 DDS to microcontrollers via serial/USB
 
 ## Architecture
@@ -41,42 +42,39 @@ The native layer cross-compiles ~70 ROS 2 Humble packages via a CMake superbuild
 
 ## How to Build
 
-You do not need ROS installed on your machine to build the app.
+You do not need ROS 2 installed on your machine to build the app.
 
 > [!NOTE]
-> ROS 2 Humble is needed on a companion machine or on your device to interact with the published topics. Follow [these instructions to install ROS Humble](https://docs.ros.org/en/humble/Installation.html).
+> ROS 2 Humble is needed on a companion machine to interact with the published topics. Follow [these instructions to install ROS Humble](https://docs.ros.org/en/humble/Installation.html).
 
 ### Dependencies
 
 **Android SDK Components:**
 
-- Android SDK Command-line Tools (version 8.0)
-- Platform Tools (version 35.0.2)
-- Build Tools (version 33.0.2 and 34.0.0)
-- Android Platform API 33 and 34
+- Command-line Tools 8.0
+- Platform Tools 35.0.2
+- Build Tools 33.0.2 and 34.0.0
+- Platform API 33 and 34
 - NDK 25.1.8937393
 - CMake 3.22.1
 
 **Build Tools:**
 
-- JDK 21 (for Gradle and keytool)
-- Gradle (downloaded automatically by the wrapper)
-- make
+- JDK 21
+- Gradle 8.x (via wrapper)
+- GNU Make
+- vcstool (for ROS 2 dependency management)
 - zip/unzip
 - git
 - adb (Android Debug Bridge)
 
-**Python Packages:**
+**Python 3 Packages:**
 
-- catkin-pkg (ROS 2 build dependency)
-- empy 3.x (ROS 2 requires 3.x, not 4.x)
+- catkin-pkg
+- empy 3.3.4 (ROS 2 Humble requires 3.x, not 4.x)
 - lark-parser
 - pip
 - setuptools
-
-**ROS 2 Tools:**
-
-- vcstool (for managing ROS 2 package repositories)
 
 ### Computer Setup
 
@@ -145,79 +143,102 @@ git submodule update
 
 ### Download ROS Dependencies
 
-Use [vcstool](https://github.com/dirk-thomas/vcstool) to download the ROS packages needed for cross-compilation:
+Fetch git submodules and ROS 2 source dependencies:
 
 ```bash
-vcs import --input ros.repos deps/
+make deps
 ```
+
+This initializes git submodules and uses [vcstool](https://github.com/dirk-thomas/vcstool) to download ~70 ROS 2 packages into `deps/`.
 
 ### Build
 
-The build is two stages: CMake cross-compiles the native libraries, then Gradle compiles Kotlin and produces the APK.
+The build system uses a Makefile with two stages: CMake cross-compiles the native libraries, then Gradle compiles Kotlin and produces the APK.
 
-**1. Build native libraries (CMake)**
+**Build everything (native + APK):**
 
 ```bash
-cmake -B build -DANDROID_HOME=$ANDROID_HOME
-cmake --build build -j$(nproc)
+make all
 ```
 
-This cross-compiles ~70 ROS 2 packages and `libandroid-ros.so`, then stages the shared libraries to `build/jniLibs/arm64-v8a/`.
-
-**2. Build the APK (Gradle)**
+**Or build stages separately:**
 
 ```bash
-./gradlew :app:assembleDebug
+# Build native libraries only (CMake cross-compilation)
+make native
+
+# Build APK only (requires native libraries already built)
+make app
 ```
 
-The APK is produced at `app/build/outputs/apk/debug/app-debug.apk`.
-
-### Install
+**Build variants:**
 
 ```bash
-adb install app/build/outputs/apk/debug/app-debug.apk
+# Build with debug symbols (no optimization)
+make debug
+
+# Build optimized (no debug symbols)
+make release
+```
+
+The native libraries are staged to `build/jniLibs/arm64-v8a/` and the APK is produced at `app/build/outputs/apk/debug/app-debug.apk`.
+
+### Install and Run
+
+**Install APK to connected device:**
+
+```bash
+make install
+```
+
+**Build, install, and launch app:**
+
+```bash
+make run
 ```
 
 ## Debug
 
-### ADB Commands
-
-Start the app:
-
-```bash
-adb shell am start -n com.github.mowerick.ros2.android/.MainActivity
-```
-
-Reinstall (keeping app data):
-
-```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
-
 ### Logging
 
-View all logs:
+**View app logs (recommended):**
+
+```bash
+make logcat
+```
+
+This clears the log buffer and tails logs filtered to the app.
+
+**View all device logs:**
 
 ```bash
 adb logcat -v color
 ```
 
-Filter to this app:
-
-```bash
-adb logcat -v color --pid=$(adb shell pidof -s com.github.mowerick.ros2.android)
-```
-
-Clear buffer and follow:
-
-```bash
-adb logcat -c && adb logcat -v color --pid=$(adb shell pidof -s com.github.mowerick.ros2.android)
-```
-
-Save to file:
+**Save logs to file:**
 
 ```bash
 adb logcat -v time > logcat.txt
+```
+
+### Cleaning Builds
+
+**Clean everything:**
+
+```bash
+make clean
+```
+
+**Clean only app build (keeps native libs):**
+
+```bash
+make clean-app
+```
+
+**Clean native build (forces full rebuild):**
+
+```bash
+make clean-native
 ```
 
 ### Native Stack Traces
@@ -245,8 +266,6 @@ The app publishes ROS 2 topics that can be discovered and inspected from a compa
 ```bash
 export ROS_DOMAIN_ID=1
 ```
-
-Replace `<path_to_project>` with the absolute path to this repository (e.g., `/home/user/ros2_android`).
 
 **Common commands:**
 
@@ -294,7 +313,8 @@ The Android app publishes sensor and camera data as ROS 2 topics that can be con
 
 ### Network Prerequisites
 
-**Multicast Discovery Requirements:**
+> [!IMPORTANT]
+> Multicast must be enabled for DDS discovery to work between the Android device and your laptop/PC.
 
 DDS discovery relies on UDP multicast (destination address 239.255.0.1). For nodes on different machines to discover each other, the network must support IGMP (Internet Group Management Protocol), which allows routers to intelligently forward multicast packets only to ports where applications have subscribed to the multicast group.
 
@@ -304,25 +324,28 @@ DDS discovery relies on UDP multicast (destination address 239.255.0.1). For nod
 - **WiFi multicast filtering**: Many consumer and enterprise WiFi access points aggressively filter multicast traffic to reduce airtime usage, blocking DDS discovery packets even when IGMP is enabled.
 - **Firewall blocking multicast**: Host firewalls may drop incoming multicast packets by default.
 
-**Solutions:**
+**Required firewall configuration on host machine:**
 
-1. **Enable IGMP snooping** on your router (check admin interface under "Multicast" or "IGMP" settings).
-2. **Allow UDP multicast in host firewall**:
-   ```bash
-   # Allow incoming UDP from Android device (replace <ip_of_phone> with device IP)
-   sudo iptables -I INPUT 1 -p udp -s <ip_of_phone> -j ACCEPT
-   ```
-   Alternatively, allow all multicast traffic:
-   ```bash
-   sudo iptables -A INPUT -m pkttype --pkt-type multicast -j ACCEPT
-   ```
-3. **Verify both devices are on the same subnet** (e.g., both have 192.168.1.x addresses).
-
-**Check Android device IP:**
+Execute the following commands on your testing machine to allow IGMP (multicast group joins) and UDP packets:
 
 ```bash
-adb shell ip addr show wlan0 | grep inet
+sudo iptables -I INPUT 1 -p igmp -j ACCEPT
+sudo iptables -I INPUT 1 -p udp -d 224.0.0.0/4 -j ACCEPT
+sudo iptables -I INPUT 1 -p udp -s <source_ip> -j ACCEPT
+sudo iptables -L INPUT -v -n --line-numbers
 ```
+
+> [!TIP]
+> Replace `<source_ip>` with your Android device's IP address. Check it with:
+>
+> ```bash
+> adb shell ip addr show wlan0 | grep inet
+> ```
+
+**Additional checks:**
+
+1. **Enable IGMP snooping** on your router (check admin interface under "Multicast" or "IGMP" settings).
+2. **Verify both devices are on the same subnet** (e.g., both have 192.168.1.x addresses).
 
 ### Environment Setup on Host Machine
 
@@ -330,12 +353,6 @@ Set the DDS configuration and domain ID to match the Android app:
 
 ```bash
 export ROS_DOMAIN_ID=1
-```
-
-Replace `<path_to_project>` with the absolute path to this repository (e.g., `/home/user/ros2_android`).
-
-```xml
-<NetworkInterfaceAddress>enp39s0</NetworkInterfaceAddress>
 ```
 
 ### Verifying Discovery
@@ -360,22 +377,10 @@ ros2 topic hz /camera/front/image_color
 
 ### Testing Built-in Sensors
 
-#### Network Prerequisites
-
 > [!IMPORTANT]
-> Multicast must be enabled for DDS discovery to work between the Android device and your laptop/PC.
+> Before testing sensors, ensure multicast is enabled on your host machine. See [Network Prerequisites](#network-prerequisites) above for firewall configuration.
 
-Execute the following commands on your testing machine to allow IGMP (multicast group joins) and UDP packets:
-
-```bash
-sudo iptables -I INPUT 1 -p igmp -j ACCEPT
-sudo iptables -I INPUT 1 -p udp -d 224.0.0.0/4 -j ACCEPT
-sudo iptables -I INPUT 1 -p udp -s <source_ip> -j ACCEPT
-sudo iptables -L INPUT -v -n --line-numbers
-```
-
-> [!TIP]
-> Replace `<source_ip>` with your Android device's IP address.
+#### Quick Start
 
 #### Testing Cameras (Front and Rear)
 
@@ -414,13 +419,24 @@ ros2 run rqt_image_view rqt_image_view
 
 ### Other Available Topics
 
-- **Sensor data**: `/accelerometer`, `/gyroscope`, `/magnetometer`, `/barometer`, `/illuminance`, `/gps`
-- **Camera info**: `/camera/front/camera_info`, `/camera/back/camera_info`, `/camera/back/image_color` (contains intrinsic calibration parameters)
+**Sensor data:**
+
+- `/sensors/accelerometer` - IMU acceleration data
+- `/sensors/gyroscope` - IMU angular velocity data
+- `/sensors/magnetometer` - Magnetic field data
+- `/sensors/barometer` - Atmospheric pressure data
+- `/sensors/illuminance` - Light sensor data
+- `/sensors/gps` - GPS location data
+
+**Camera info:**
+
+- `/camera/front/camera_info` - Front camera intrinsic calibration
+- `/camera/back/camera_info` - Rear camera intrinsic calibration
 
 Echo a topic to inspect data:
 
 ```bash
-ros2 topic echo /sensors/accel
+ros2 topic echo /sensors/accelerometer
 ```
 
 ## Documentation
