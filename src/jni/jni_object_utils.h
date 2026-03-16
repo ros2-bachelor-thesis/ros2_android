@@ -26,6 +26,8 @@ struct CameraInfoData {
     bool enabled;
     std::string imageTopicName;
     std::string imageTopicType;
+    std::string compressedImageTopicName;
+    std::string compressedImageTopicType;
     std::string infoTopicName;
     std::string infoTopicType;
     int resolutionWidth;

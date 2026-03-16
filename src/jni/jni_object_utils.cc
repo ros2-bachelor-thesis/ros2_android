@@ -101,10 +101,10 @@ jobject CreateCameraInfo(JNIEnv* env, const CameraInfoData& data) {
         return nullptr;
     }
 
-    // Find constructor: CameraInfo(String, String, Boolean, String, String, String, String, Int, Int, Boolean, Int)
+    // Find constructor: CameraInfo(String, String, Boolean, String, String, String, String, String, String, Int, Int, Boolean, Int)
     jmethodID constructor = env->GetMethodID(
         cameraInfoClass, "<init>",
-        "(Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIZI)V");
+        "(Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIZI)V");
     if (!constructor) {
         LOGE("Failed to find CameraInfo constructor");
         env->DeleteLocalRef(cameraInfoClass);
@@ -116,6 +116,8 @@ jobject CreateCameraInfo(JNIEnv* env, const CameraInfoData& data) {
     jstring name = env->NewStringUTF(data.name.c_str());
     jstring imageTopicName = env->NewStringUTF(data.imageTopicName.c_str());
     jstring imageTopicType = env->NewStringUTF(data.imageTopicType.c_str());
+    jstring compressedImageTopicName = env->NewStringUTF(data.compressedImageTopicName.c_str());
+    jstring compressedImageTopicType = env->NewStringUTF(data.compressedImageTopicType.c_str());
     jstring infoTopicName = env->NewStringUTF(data.infoTopicName.c_str());
     jstring infoTopicType = env->NewStringUTF(data.infoTopicType.c_str());
 
@@ -125,6 +127,7 @@ jobject CreateCameraInfo(JNIEnv* env, const CameraInfoData& data) {
         uniqueId, name,
         static_cast<jboolean>(data.enabled),
         imageTopicName, imageTopicType,
+        compressedImageTopicName, compressedImageTopicType,
         infoTopicName, infoTopicType,
         static_cast<jint>(data.resolutionWidth),
         static_cast<jint>(data.resolutionHeight),
@@ -136,6 +139,8 @@ jobject CreateCameraInfo(JNIEnv* env, const CameraInfoData& data) {
     env->DeleteLocalRef(name);
     env->DeleteLocalRef(imageTopicName);
     env->DeleteLocalRef(imageTopicType);
+    env->DeleteLocalRef(compressedImageTopicName);
+    env->DeleteLocalRef(compressedImageTopicType);
     env->DeleteLocalRef(infoTopicName);
     env->DeleteLocalRef(infoTopicType);
     env->DeleteLocalRef(cameraInfoClass);

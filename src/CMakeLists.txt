@@ -12,6 +12,10 @@ find_package(sensor_msgs REQUIRED)
 find_path(LIBYUV_INCLUDE_DIR libyuv.h)
 find_library(LIBYUV_LIBRARY yuv)
 
+# Find libjpeg-turbo
+find_path(TURBOJPEG_INCLUDE_DIR turbojpeg.h)
+find_library(TURBOJPEG_LIBRARY NAMES turbojpeg turbojpeg-static)
+
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
 add_library(android-ros SHARED
@@ -64,10 +68,12 @@ target_link_libraries(android-ros PRIVATE
     rclcpp::rclcpp
     ${geometry_msgs_TARGETS}
     ${sensor_msgs_TARGETS}
-    ${LIBYUV_LIBRARY})
+    ${LIBYUV_LIBRARY}
+    ${TURBOJPEG_LIBRARY})
 target_include_directories(android-ros PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    ${LIBYUV_INCLUDE_DIR})
+    ${LIBYUV_INCLUDE_DIR}
+    ${TURBOJPEG_INCLUDE_DIR})
 # LTO to reduce APK size
 set_property(TARGET android-ros PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 

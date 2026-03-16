@@ -18,6 +18,14 @@ macro(build_crosscompile_dependencies)
     SOURCE_DIR "deps/libyuv"
     CMAKE_ARGS ${extra_cmake_args})
 
+  # libjpeg-turbo - JPEG compression library
+  dep_build(libjpeg-turbo CMAKE
+    SOURCE_DIR "deps/libjpeg-turbo"
+    CMAKE_ARGS ${extra_cmake_args}
+      -DENABLE_SHARED=OFF
+      -DENABLE_STATIC=ON
+      -DWITH_TURBOJPEG=ON)
+
   dep_build(ament_index_python PIP
     SOURCE_DIR "deps/ament_index/ament_index_python"
     DEPENDENCIES )

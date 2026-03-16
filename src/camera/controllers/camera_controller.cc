@@ -1,6 +1,7 @@
 #include "camera/controllers/camera_controller.h"
 
 #include <libyuv.h>
+#include <turbojpeg.h>
 #include <sstream>
 
 #include "core/camera_frame_callback_queue.h"
@@ -13,6 +14,7 @@ using ros2_android::NotificationSeverity;
 using ros2_android::PostNotification;
 using sensor_msgs::msg::CameraInfo;
 using sensor_msgs::msg::Image;
+using sensor_msgs::msg::CompressedImage;
 
 CameraController::CameraController(CameraManager *camera_manager,
                                    const CameraDescriptor &camera_descriptor,
@@ -21,18 +23,22 @@ CameraController::CameraController(CameraManager *camera_manager,
       camera_descriptor_(camera_descriptor),
       SensorDataProvider(camera_descriptor.GetName()),
       info_pub_(ros),
-      image_pub_(ros)
+      image_pub_(ros),
+      compressed_image_pub_(ros)
 {
   std::string info_topic = camera_descriptor_.topic_prefix + "camera_info";
   std::string image_topic = camera_descriptor_.topic_prefix + "image_color";
+  std::string compressed_image_topic = camera_descriptor_.topic_prefix + "image_color/compressed";
 
   info_pub_.SetTopic(info_topic.c_str());
   image_pub_.SetTopic(image_topic.c_str());
+  compressed_image_pub_.SetTopic(compressed_image_topic.c_str());
 
-  // Use BEST_EFFORT for both topics (standard for camera streaming)
+  // Use BEST_EFFORT QoS for all topics (standard for camera streaming)
   auto qos = rclcpp::QoS(1).best_effort();
   info_pub_.SetQos(qos);
   image_pub_.SetQos(qos);
+  compressed_image_pub_.SetQos(qos);
 }
 
 CameraController::~CameraController() {}
@@ -50,16 +56,18 @@ void CameraController::EnableCamera()
             " - could not open device (already in use?)");
     return;
   }
-  image_pub_.Enable();
   info_pub_.Enable();
+  image_pub_.Enable();
+  compressed_image_pub_.Enable();
   device_->SetListener(
       std::bind(&CameraController::OnImage, this, std::placeholders::_1));
 }
 
 void CameraController::DisableCamera()
 {
-  image_pub_.Disable();
   info_pub_.Disable();
+  image_pub_.Disable();
+  compressed_image_pub_.Disable();
   device_.reset();
   {
     std::lock_guard<std::mutex> lock(frame_mutex_);
@@ -103,21 +111,79 @@ bool CameraController::GetLastMeasurement(jni::SensorReadingData &out_data)
 void CameraController::OnImage(
     const std::pair<CameraInfo::UniquePtr, Image::UniquePtr> &info_image)
 {
-  // Only publish if camera is enabled AND there are subscribers
-  // This prevents unnecessary YUV->RGB conversion and publishing overhead
-  if (info_pub_.Enabled() && image_pub_.Enabled())
+  // Publish camera_info (shared by both raw and compressed topics)
+  if (info_pub_.Enabled())
   {
-    // Check if anyone is subscribed (includes tools like rqt_image_view)
     size_t info_subscribers = info_pub_.GetSubscriberCount();
-    size_t image_subscribers = image_pub_.GetSubscriberCount();
-
-    if (info_subscribers > 0 || image_subscribers > 0)
+    if (info_subscribers > 0)
     {
-      // At least one subscriber exists - publish both topics
       info_pub_.Publish(*info_image.first.get());
+    }
+  }
+
+  // Publish raw image if there are subscribers
+  if (image_pub_.Enabled())
+  {
+    size_t image_subscribers = image_pub_.GetSubscriberCount();
+    if (image_subscribers > 0)
+    {
       image_pub_.Publish(*info_image.second.get());
     }
-    // else: No subscribers, skip publishing to save CPU/bandwidth
+  }
+
+  // Publish compressed image if there are subscribers
+  if (compressed_image_pub_.Enabled())
+  {
+    size_t compressed_image_subscribers = compressed_image_pub_.GetSubscriberCount();
+    if (compressed_image_subscribers > 0)
+    {
+      const auto &bgr_data = info_image.second->data;
+      int width = info_image.second->width;
+      int height = info_image.second->height;
+
+      // Convert BGR to RGB for JPEG encoding
+      std::vector<uint8_t> rgb_data(width * height * 3);
+      for (size_t i = 0; i < bgr_data.size(); i += 3)
+      {
+        rgb_data[i] = bgr_data[i + 2];     // R
+        rgb_data[i + 1] = bgr_data[i + 1]; // G
+        rgb_data[i + 2] = bgr_data[i];     // B
+      }
+
+      // Compress to JPEG using TurboJPEG
+      tjhandle compressor = tjInitCompress();
+      if (compressor)
+      {
+        unsigned char *jpeg_buf = nullptr;
+        unsigned long jpeg_size = 0;
+
+        int tj_result = tjCompress2(
+            compressor,
+            rgb_data.data(),
+            width,
+            width * 3,           // pitch (bytes per row)
+            height,
+            TJPF_RGB,
+            &jpeg_buf,
+            &jpeg_size,
+            TJSAMP_420,          // 4:2:0 chroma subsampling
+            80,                  // quality (0-100)
+            TJFLAG_FASTDCT);
+
+        if (tj_result == 0)
+        {
+          auto compressed_msg = std::make_unique<CompressedImage>();
+          compressed_msg->header = info_image.second->header;
+          compressed_msg->format = "jpeg";
+          compressed_msg->data.assign(jpeg_buf, jpeg_buf + jpeg_size);
+          compressed_image_pub_.Publish(*compressed_msg);
+        }
+
+        if (jpeg_buf)
+          tjFree(jpeg_buf);
+        tjDestroy(compressor);
+      }
+    }
   }
 
   // Convert BGR8 to ARGB for UI preview
@@ -175,7 +241,7 @@ void CameraController::OnImage(
   }
 
   // Trigger callback to notify UI of new camera frame (throttled to 10 Hz)
-  ros2_android::PostCameraFrameUpdate(std::string(UniqueId()));
+  ros2_android::PostCameraFrameUpdate(std::string(static_cast<const SensorDataProvider*>(this)->UniqueId()));
 }
 
 bool CameraController::GetLastFrame(std::vector<uint8_t> &out_data,

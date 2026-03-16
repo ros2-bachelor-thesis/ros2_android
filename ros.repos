@@ -41,6 +41,10 @@ repositories:
     type: git
     url: https://chromium.googlesource.com/libyuv/libyuv
     version: main
+  libjpeg-turbo:
+    type: git
+    url: https://github.com/libjpeg-turbo/libjpeg-turbo.git
+    version: main
   mimick_vendor:
     type: git
     url: https://github.com/ros2/mimick_vendor.git

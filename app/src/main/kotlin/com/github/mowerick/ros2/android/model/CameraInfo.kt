@@ -6,6 +6,8 @@ data class CameraInfo(
     val enabled: Boolean,
     val imageTopicName: String,
     val imageTopicType: String,
+    val compressedImageTopicName: String,
+    val compressedImageTopicType: String,
     val infoTopicName: String,
     val infoTopicType: String,
     val resolutionWidth: Int,

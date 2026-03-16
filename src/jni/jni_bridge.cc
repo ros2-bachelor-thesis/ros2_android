@@ -121,6 +121,7 @@ public:
       for (auto cam_desc : cameras)
       {
         LOGI("Camera: %s", cam_desc.GetName().c_str());
+        // Create camera controller (publishes both raw and compressed)
         auto camera_controller =
             std::make_unique<ros2_android::CameraController>(
                 &camera_manager_, cam_desc, ros_);
@@ -236,7 +237,7 @@ public:
         return c->GetLastMeasurementJson();
       }
     }
-    for (auto &c : camera_controllers_)
+    for (const auto &c : camera_controllers_)
     {
       if (unique_id == c->UniqueId())
       {
@@ -252,7 +253,7 @@ public:
     ss << "[";
     for (size_t i = 0; i < camera_controllers_.size(); ++i)
     {
-      auto *c = camera_controllers_[i].get();
+      const auto *c = camera_controllers_[i].get();
       if (i > 0)
         ss << ",";
       auto [width, height] = c->GetResolution();
@@ -295,7 +296,7 @@ public:
   std::vector<ros2_android::jni::CameraInfoData> GetCameraList()
   {
     std::vector<ros2_android::jni::CameraInfoData> result;
-    for (auto& c : camera_controllers_)
+    for (const auto& c : camera_controllers_)
     {
       ros2_android::jni::CameraInfoData data;
       auto [width, height] = c->GetResolution();
@@ -304,6 +305,8 @@ public:
       data.enabled = c->IsEnabled();
       data.imageTopicName = c->ImageTopicName();
       data.imageTopicType = c->ImageTopicType();
+      data.compressedImageTopicName = c->CompressedImageTopicName();
+      data.compressedImageTopicType = c->CompressedImageTopicType();
       data.infoTopicName = c->InfoTopicName();
       data.infoTopicType = c->InfoTopicType();
       data.resolutionWidth = width;
@@ -350,7 +353,8 @@ public:
   {
     for (auto &c : camera_controllers_)
     {
-      if (unique_id == c->UniqueId())
+      const auto* ptr = c.get();
+      if (unique_id == ptr->UniqueId())
       {
         return c->GetLastFrame(out_data, out_width, out_height);
       }
@@ -362,7 +366,8 @@ public:
   {
     for (auto &c : camera_controllers_)
     {
-      if (unique_id == c->UniqueId())
+      const auto* ptr = c.get();
+      if (unique_id == ptr->UniqueId())
       {
         c->EnableCamera();
         return;
@@ -374,7 +379,8 @@ public:
   {
     for (auto &c : camera_controllers_)
     {
-      if (unique_id == c->UniqueId())
+      const auto* ptr = c.get();
+      if (unique_id == ptr->UniqueId())
       {
         c->DisableCamera();
         return;

@@ -112,9 +112,15 @@ fun CameraDetailScreen(
             }
 
             TopicInfoCard(
-                label = "Image",
+                label = "Image (Raw)",
                 topicName = camera.imageTopicName,
                 topicType = camera.imageTopicType
+            )
+
+            TopicInfoCard(
+                label = "Image (Compressed)",
+                topicName = camera.compressedImageTopicName,
+                topicType = camera.compressedImageTopicType
             )
 
             TopicInfoCard(

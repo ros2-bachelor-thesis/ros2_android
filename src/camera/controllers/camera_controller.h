@@ -5,6 +5,8 @@
 #include <mutex>
 #include <vector>
 
+#include <sensor_msgs/msg/compressed_image.hpp>
+
 #include "camera/base/camera_device.h"
 #include "camera/camera_manager.h"
 #include "ros/ros_interface.h"
@@ -31,6 +33,8 @@ class CameraController : public SensorDataProvider {
   bool IsEnabled() const override { return image_pub_.Enabled(); }
   const char* ImageTopicName() const { return image_pub_.Topic(); }
   const char* ImageTopicType() const { return image_pub_.Type(); }
+  const char* CompressedImageTopicName() const { return compressed_image_pub_.Topic(); }
+  const char* CompressedImageTopicType() const { return compressed_image_pub_.Type(); }
   const char* InfoTopicName() const { return info_pub_.Topic(); }
   const char* InfoTopicType() const { return info_pub_.Type(); }
   std::string GetCameraName() const { return camera_descriptor_.display_name; }
@@ -59,6 +63,7 @@ class CameraController : public SensorDataProvider {
   std::unique_ptr<CameraDevice> device_;
   Publisher<sensor_msgs::msg::CameraInfo> info_pub_;
   Publisher<sensor_msgs::msg::Image> image_pub_;
+  Publisher<sensor_msgs::msg::CompressedImage> compressed_image_pub_;
 
   std::mutex frame_mutex_;
   std::vector<uint8_t> last_frame_;  // Raw RGBA frame data
