@@ -41,6 +41,7 @@ bool BarometerSensorController::GetLastMeasurement(jni::SensorReadingData& out_d
   std::lock_guard<std::mutex> lock(mutex_);
   out_data.values = {last_msg_.fluid_pressure};
   out_data.unit = "Pa";
+  out_data.sensorType = jni::SensorType::BAROMETER;
   return true;
 }
 

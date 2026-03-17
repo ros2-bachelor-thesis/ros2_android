@@ -42,6 +42,7 @@ bool AccelerometerSensorController::GetLastMeasurement(jni::SensorReadingData& o
   std::lock_guard<std::mutex> lock(mutex_);
   out_data.values = {last_msg_.accel.linear.x, last_msg_.accel.linear.y, last_msg_.accel.linear.z};
   out_data.unit = "m/s^2";
+  out_data.sensorType = jni::SensorType::ACCELEROMETER;
   return true;
 }
 

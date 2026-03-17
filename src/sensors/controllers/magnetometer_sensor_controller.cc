@@ -48,6 +48,7 @@ bool MagnetometerSensorController::GetLastMeasurement(jni::SensorReadingData& ou
     last_msg_.magnetic_field.z * kMicroTeslaPerTesla
   };
   out_data.unit = "uT";
+  out_data.sensorType = jni::SensorType::MAGNETOMETER;
   return true;
 }
 

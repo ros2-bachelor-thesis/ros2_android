@@ -42,6 +42,7 @@ bool IlluminanceSensorController::GetLastMeasurement(jni::SensorReadingData& out
   std::lock_guard<std::mutex> lock(mutex_);
   out_data.values = {last_msg_.illuminance};
   out_data.unit = "lx";
+  out_data.sensorType = jni::SensorType::ILLUMINANCE;
   return true;
 }
 

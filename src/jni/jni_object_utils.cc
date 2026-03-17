@@ -4,6 +4,20 @@
 namespace ros2_android {
 namespace jni {
 
+// Convert SensorType enum to string for Kotlin
+static const char* SensorTypeToString(SensorType type) {
+    switch (type) {
+        case SensorType::ACCELEROMETER: return "accelerometer";
+        case SensorType::BAROMETER: return "barometer";
+        case SensorType::GPS: return "gps";
+        case SensorType::GYROSCOPE: return "gyroscope";
+        case SensorType::ILLUMINANCE: return "illuminance";
+        case SensorType::MAGNETOMETER: return "magnetometer";
+        case SensorType::UNKNOWN:
+        default: return "unknown";
+    }
+}
+
 jobject CreateSensorInfo(JNIEnv* env, const SensorInfoData& data) {
     if (!env) {
         LOGE("CreateSensorInfo: Invalid JNIEnv");
@@ -244,22 +258,56 @@ jobject CreateSensorReading(JNIEnv* env, const SensorReadingData& data) {
     env->DeleteLocalRef(doubleClass);
     env->DeleteLocalRef(arrayListClass);
 
+    // Find SensorType enum class
+    jclass sensorTypeClass = env->FindClass("com/github/mowerick/ros2/android/model/SensorType");
+    if (!sensorTypeClass) {
+        LOGE("Failed to find SensorType class");
+        env->DeleteLocalRef(valuesList);
+        return nullptr;
+    }
+
+    // Get the fromString static method
+    jmethodID fromStringMethod = env->GetStaticMethodID(
+        sensorTypeClass, "fromString",
+        "(Ljava/lang/String;)Lcom/github/mowerick/ros2/android/model/SensorType;");
+    if (!fromStringMethod) {
+        LOGE("Failed to find SensorType.fromString method");
+        env->DeleteLocalRef(sensorTypeClass);
+        env->DeleteLocalRef(valuesList);
+        return nullptr;
+    }
+
+    // Convert sensor type string to SensorType enum
+    jstring sensorTypeStr = env->NewStringUTF(SensorTypeToString(data.sensorType));
+    jobject sensorTypeEnum = env->CallStaticObjectMethod(
+        sensorTypeClass, fromStringMethod, sensorTypeStr);
+    env->DeleteLocalRef(sensorTypeStr);
+    env->DeleteLocalRef(sensorTypeClass);
+
+    if (!sensorTypeEnum) {
+        LOGE("Failed to create SensorType enum");
+        env->DeleteLocalRef(valuesList);
+        return nullptr;
+    }
+
     // Find SensorReading class
     jclass sensorReadingClass = env->FindClass("com/github/mowerick/ros2/android/model/SensorReading");
     if (!sensorReadingClass) {
         LOGE("Failed to find SensorReading class");
         env->DeleteLocalRef(valuesList);
+        env->DeleteLocalRef(sensorTypeEnum);
         return nullptr;
     }
 
-    // Find constructor: SensorReading(List<Double>, String)
+    // Find constructor: SensorReading(List<Double>, String, SensorType)
     jmethodID constructor = env->GetMethodID(
         sensorReadingClass, "<init>",
-        "(Ljava/util/List;Ljava/lang/String;)V");
+        "(Ljava/util/List;Ljava/lang/String;Lcom/github/mowerick/ros2/android/model/SensorType;)V");
     if (!constructor) {
         LOGE("Failed to find SensorReading constructor");
         env->DeleteLocalRef(sensorReadingClass);
         env->DeleteLocalRef(valuesList);
+        env->DeleteLocalRef(sensorTypeEnum);
         return nullptr;
     }
 
@@ -269,11 +317,12 @@ jobject CreateSensorReading(JNIEnv* env, const SensorReadingData& data) {
     // Create the SensorReading object
     jobject sensorReading = env->NewObject(
         sensorReadingClass, constructor,
-        valuesList, unit);
+        valuesList, unit, sensorTypeEnum);
 
     // Clean up local references
     env->DeleteLocalRef(valuesList);
     env->DeleteLocalRef(unit);
+    env->DeleteLocalRef(sensorTypeEnum);
     env->DeleteLocalRef(sensorReadingClass);
 
     return sensorReading;

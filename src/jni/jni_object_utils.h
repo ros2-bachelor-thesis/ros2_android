@@ -8,6 +8,17 @@
 namespace ros2_android {
 namespace jni {
 
+// Sensor type enumeration matching Kotlin SensorType enum
+enum class SensorType {
+    ACCELEROMETER,
+    BAROMETER,
+    GPS,
+    GYROSCOPE,
+    ILLUMINANCE,
+    MAGNETOMETER,
+    UNKNOWN
+};
+
 // SensorInfo structure matching Kotlin data class
 struct SensorInfoData {
     std::string uniqueId;
@@ -40,6 +51,7 @@ struct CameraInfoData {
 struct SensorReadingData {
     std::vector<double> values;
     std::string unit;
+    SensorType sensorType;
 };
 
 // Create a SensorInfo Kotlin object from native data

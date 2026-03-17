@@ -23,7 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.github.mowerick.ros2.android.model.SensorInfo
 import com.github.mowerick.ros2.android.model.SensorReading
-import com.github.mowerick.ros2.android.ui.components.TopicInfoCard
+import com.github.mowerick.ros2.android.ui.components.CollapsibleCard
+import com.github.mowerick.ros2.android.ui.components.CopyableTextCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,27 +70,45 @@ fun SensorDetailScreen(
                 }
             }
 
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Name: ${sensor.sensorName}", style = MaterialTheme.typography.bodyLarge)
-                    Text("Vendor: ${sensor.vendor}", style = MaterialTheme.typography.bodyMedium)
-                }
+            CollapsibleCard(
+                title = "Sensor Info",
+                initiallyExpanded = true
+            ) {
+                Text("Name: ${sensor.sensorName}", style = MaterialTheme.typography.bodyLarge)
+                Text("Vendor: ${sensor.vendor}", style = MaterialTheme.typography.bodyMedium)
             }
 
-            TopicInfoCard(
-                label = "",
-                topicName = sensor.topicName,
-                topicType = sensor.topicType
-            )
+            CollapsibleCard(
+                title = "Topic",
+                initiallyExpanded = true
+            ) {
+                Text(
+                    text = "Name: ${if (sensor.topicName.startsWith("/")) sensor.topicName else "/${sensor.topicName}"}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = "Type: ${sensor.topicType}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
 
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Last Reading", style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        text = reading?.formattedValue ?: "Waiting for data...",
-                        style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
+            if (reading != null) {
+                CopyableTextCard(
+                    label = "Last Reading",
+                    displayText = reading.formattedValue,
+                    copyText = reading.copyableValue
+                )
+            } else {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Last Reading", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            text = reading?.formattedValue ?: "Waiting for data...",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
                 }
             }
         }

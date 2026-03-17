@@ -62,6 +62,7 @@ namespace ros2_android
     }
     out_data.values = {last_msg_.latitude, last_msg_.longitude, last_msg_.altitude};
     out_data.unit = "°";
+    out_data.sensorType = jni::SensorType::GPS;
     return true;
   }
 
