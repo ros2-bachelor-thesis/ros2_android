@@ -1,37 +1,13 @@
 #include "sensors/impl/gps_location_sensor.h"
 
 #include <cmath>
-#include <time.h>  // Required for clock_gettime, CLOCK_REALTIME, CLOCK_BOOTTIME
-#include <cstdint> // Required for int64_t
+#include <cstdint>
 
 #include "core/log.h"
+#include "core/time_utils.h"
 
 namespace ros2_android
 {
-
-  namespace
-  {
-    // Helper function to get the current offset between Epoch time and Boot time.
-    // Placed in an anonymous namespace so it's only visible within this translation unit.
-    int64_t get_boot_time_offset_ns()
-    {
-      struct timespec realtime_ts, boottime_ts;
-
-      // Sample both clocks as close together as possible
-      if (clock_gettime(CLOCK_REALTIME, &realtime_ts) == 0 &&
-          clock_gettime(CLOCK_BOOTTIME, &boottime_ts) == 0)
-      {
-
-        int64_t realtime_ns = static_cast<int64_t>(realtime_ts.tv_sec) * 1000000000LL + realtime_ts.tv_nsec;
-        int64_t boottime_ns = static_cast<int64_t>(boottime_ts.tv_sec) * 1000000000LL + boottime_ts.tv_nsec;
-
-        return realtime_ns - boottime_ns;
-      }
-
-      // Fallback if clock_gettime fails (unlikely on Android, but safe to handle)
-      return 0;
-    }
-  } // namespace
 
   void GpsLocationProvider::OnLocationUpdate(double latitude, double longitude,
                                              double altitude, float accuracy,
@@ -47,8 +23,7 @@ namespace ros2_android
     sensor_msgs::msg::NavSatFix msg;
 
     // Convert Android hardware timestamp (nanoseconds since boot) to ROS epoch time
-    // by calculating the dynamic offset between the two clocks.
-    int64_t offset_ns = get_boot_time_offset_ns();
+    int64_t offset_ns = time_utils::GetBootTimeOffsetNs();
     int64_t ros_epoch_timestamp_ns = timestamp_ns + offset_ns;
 
     msg.header.stamp.sec = static_cast<int32_t>(ros_epoch_timestamp_ns / 1000000000LL);

@@ -25,6 +25,9 @@ add_library(android-ros SHARED
   jni/bitmap_utils.cc
   jni/jni_object_utils.cc
 
+  # Core utilities
+  core/time_utils.cc
+
   # ROS interface
   ros/ros_interface.cc
 
