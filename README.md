@@ -27,19 +27,88 @@ Target: Android 13 (API 33), NDK 25.1.
 
 ## Architecture
 
-```
-Kotlin (Jetpack Compose UI)
-    |
-    | JNI (JSON over strings)
-    |
-C++ (rclcpp, Cyclone DDS, sensor drivers)
-    |
-    | UDP multicast
-    |
-ROS 2 network (other nodes on same domain)
+```text
+┌─────────────────────────────────────────────────┐
+│   Kotlin/Java (Jetpack Compose UI)              │
+│   - MainActivity, ViewModels, UI Components     │
+│   - GpsManager (FusedLocationProviderClient)    │
+└─────┬────────────────────────────────┬──────────┘
+      │                                │
+      │ Camera2 API                    │ JNI Bridge
+      │ (Java)                         │ (NativeBridge.kt ↔ jni_bridge.cc)
+      │                                │ - jobject construction
+      │                                │ - Event callbacks
+┌─────▼────────────────────────────────▼──────────┐
+│   C++ Native Layer                              │
+│   ┌───────────────────────────────────────┐     │
+│   │ ROS 2 Interface (rclcpp)              │     │
+│   │ - Node lifecycle                      │     │
+│   │ - Publisher management                │     │
+│   └───────────────┬───────────────────────┘     │
+│                   │                             │
+│   ┌───────────────▼───────────────────────┐     │
+│   │ Controllers                           │     │
+│   │ - Sensor controllers (IMU, etc.)      │     │
+│   │ - GPS controller (receives via JNI)   │     │
+│   │ - Camera controllers (front/back)     │     │
+│   └───┬───────────────────────┬───────────┘     │
+│       │                       │                 │
+│   ┌───▼──────────┐      ┌─────▼────────┐        │
+│   │ ASensorEvent │      │ Camera frame │        │
+│   │   Queue      │      │   callbacks  │        │
+│   │              │      │   (via JNI)  │        │
+│   └──────────────┘      └──────────────┘        │
+└──────┬──────────────────────────────────────────┘
+       │
+┌──────▼──────┐
+│ ASensor     │
+│ Manager     │
+│ (NDK)       │
+└─────────────┘
+       │
+       │ Cyclone DDS (UDP multicast discovery + unicast data)
+       │
+┌──────▼──────────────────────────────────────────┐
+│   ROS 2 Network (same domain ID)                │
+│   - Other ROS 2 nodes on host machine           │
+│   - Topics: /sensors/*, /camera/*/image_color   │
+└─────────────────────────────────────────────────┘
 ```
 
-The native layer cross-compiles ~70 ROS 2 Humble packages via a CMake superbuild. The Kotlin layer communicates with C++ through JNI functions that exchange JSON strings - avoiding fragile `jobject` construction while keeping data volumes trivial.
+The native layer cross-compiles ~70 ROS 2 Humble packages via a CMake superbuild. The Kotlin layer communicates with C++ through JNI, constructing Java objects directly (SensorInfo, SensorReading, CameraInfo, Bitmap) to avoid string serialization overhead. Event callbacks notify the UI layer when sensor data or camera frames are available.
+
+**Data sources:**
+
+- **IMU sensors** (accelerometer, gyroscope, magnetometer, barometer, illuminance) - acquired in C++ via `ASensorManager` (NDK), event queue forwarded to ROS controllers
+- **GPS** - acquired in Kotlin via `FusedLocationProviderClient` (Google Play Services), location updates passed to C++ GPS controller via JNI
+- **Cameras** - acquired in Java via `Camera2` API, frames passed to C++ camera controllers via JNI for encoding and publishing
+
+## Published ROS 2 Topics
+
+The app publishes the following topics that can be discovered and consumed by other ROS 2 nodes on the same domain:
+
+**Sensor data:**
+
+- `/sensors/accelerometer` - `sensor_msgs/Imu` - 3-axis acceleration (m/s²)
+- `/sensors/gyroscope` - `sensor_msgs/Imu` - 3-axis angular velocity (rad/s)
+- `/sensors/magnetometer` - `sensor_msgs/MagneticField` - 3-axis magnetic field (µT)
+- `/sensors/barometer` - `sensor_msgs/FluidPressure` - atmospheric pressure (hPa)
+- `/sensors/illuminance` - `sensor_msgs/Illuminance` - ambient light (lux)
+- `/sensors/gps` - `sensor_msgs/NavSatFix` - GPS location (lat/lon/alt)
+
+**Camera image streams:**
+
+- `/camera/front/image_color` - `sensor_msgs/Image` - front camera raw BGR8 (~1-3 MB/frame)
+- `/camera/front/image_color/compressed` - `sensor_msgs/CompressedImage` - front camera JPEG (~50-100 KB/frame)
+- `/camera/rear/image_color` - `sensor_msgs/Image` - rear camera raw BGR8 (~1-3 MB/frame)
+- `/camera/rear/image_color/compressed` - `sensor_msgs/CompressedImage` - rear camera JPEG (~50-100 KB/frame)
+
+**Camera calibration:**
+
+- `/camera/front/camera_info` - `sensor_msgs/CameraInfo` - front camera intrinsics
+- `/camera/rear/camera_info` - `sensor_msgs/CameraInfo` - rear camera intrinsics
+
+All topics include proper frame IDs and timestamps for TF integration.
 
 ## How to Build
 
@@ -292,34 +361,13 @@ ros2 topic list
 The Android app publishes sensor and camera data as ROS 2 topics that can be consumed by nodes running on a host machine (Linux/macOS). This enables visualization, logging, and integration with the full ROS 2 ecosystem.
 
 For complete testing instructions, including:
+
 - Automated network setup script
 - Interactive sensor testing framework with visualizers
 - Manual testing procedures
 - Troubleshooting common issues
 
 See the **[Testing Guide](scripts/tests/README.md)**.
-
-### Available Topics
-
-**Sensor data:**
-
-- `/sensors/accelerometer` - IMU acceleration data
-- `/sensors/gyroscope` - IMU angular velocity data
-- `/sensors/magnetometer` - Magnetic field data
-- `/sensors/barometer` - Atmospheric pressure data
-- `/sensors/illuminance` - Light sensor data
-- `/sensors/gps` - GPS location data
-
-**Camera info:**
-
-- `/camera/front/camera_info` - Front camera intrinsic calibration
-- `/camera/back/camera_info` - Rear camera intrinsic calibration
-
-Echo a topic to inspect data:
-
-```bash
-ros2 topic echo /sensors/accelerometer
-```
 
 ## Documentation
 

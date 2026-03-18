@@ -67,14 +67,14 @@ fun CameraDetailScreen(
                     onClick = onDisable,
                     modifier = Modifier.fillMaxWidth().height(48.dp)
                 ) {
-                    Text("Disable Camera")
+                    Text("Stop")
                 }
             } else {
                 Button(
                     onClick = onEnable,
                     modifier = Modifier.fillMaxWidth().height(48.dp)
                 ) {
-                    Text("Enable Camera")
+                    Text("Publish")
                 }
             }
 

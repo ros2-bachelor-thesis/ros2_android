@@ -59,14 +59,14 @@ fun SensorDetailScreen(
                     onClick = onDisable,
                     modifier = Modifier.fillMaxWidth().height(48.dp)
                 ) {
-                    Text("Disable Sensor")
+                    Text("Stop")
                 }
             } else {
                 Button(
                     onClick = onEnable,
                     modifier = Modifier.fillMaxWidth().height(48.dp)
                 ) {
-                    Text("Enable Sensor")
+                    Text("Publish")
                 }
             }
 
