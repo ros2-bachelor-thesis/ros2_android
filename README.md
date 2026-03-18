@@ -108,7 +108,7 @@ The app publishes the following topics that can be discovered and consumed by ot
 - `/camera/front/camera_info` - `sensor_msgs/CameraInfo` - front camera intrinsics
 - `/camera/rear/camera_info` - `sensor_msgs/CameraInfo` - rear camera intrinsics
 
-All topics include proper frame IDs and timestamps for TF integration.
+All published messages include a `frame_id` field in the header (e.g., `"camera_front"`, `"imu_link"`) and a timestamp indicating when the data was captured. This allows other ROS 2 nodes to transform the data between coordinate frames and temporally synchronize multiple sensors using ROS 2's TF (Transform) system.
 
 ## How to Build
 
