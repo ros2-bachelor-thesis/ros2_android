@@ -13,6 +13,7 @@ Target: Android 13 (API 33), NDK 25.1.
 - **Wi-Fi multicast / DDS discovery** - `MulticastLock` to enable DDS multicast on Android Wi-Fi
 - **DDS domain selection** - configurable `ROS_DOMAIN_ID` and network interface for DDS discovery
 - **Event-driven architecture** - JNI callbacks for sensor data and camera frames (zero polling overhead)
+- **Notification system** - user notification overlay for alerts and error messages from both native (C++) and Kotlin layers
 - **Jetpack Compose UI** - sensor list, live sensor data view, camera preview, node pipeline management
 - **Testing framework** - Python-based ROS 2 subscriber test suite with matplotlib visualizers for all sensor types (accelerometer, gyroscope, magnetometer, barometer, illuminance, GPS, camera)
 
@@ -80,7 +81,7 @@ The native layer cross-compiles ~70 ROS 2 Humble packages via a CMake superbuild
 **Data sources:**
 
 - **IMU sensors** (accelerometer, gyroscope, magnetometer, barometer, illuminance) - acquired in C++ via `ASensorManager` (NDK), event queue forwarded to ROS controllers
-- **GPS** - acquired in Kotlin via `FusedLocationProviderClient` (Google Play Services), location updates passed to C++ GPS controller via JNI
+- **GPS** - acquired in Kotlin via `FusedLocationProviderClient` (Google Play Services - required on device), location updates passed to C++ GPS controller via JNI
 - **Cameras** - acquired in Java via `Camera2` API, frames passed to C++ camera controllers via JNI for encoding and publishing
 
 ## Published ROS 2 Topics
