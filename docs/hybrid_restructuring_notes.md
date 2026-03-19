@@ -227,16 +227,20 @@ src/
 ├── core/             # Cross-cutting utilities (log, events, notifications)
 │   ├── log.h
 │   ├── events.h
-│   └── notification_queue.h
+│   ├── notification_queue.h
+│   ├── network_manager.cc
+│   └── network_manager.h
 ├── ros/              # ROS 2 interface layer
 │   ├── ros_interface.cc
 │   └── ros_interface.h
 ├── sensors/          # Sensor subsystem
 │   ├── base/         # Abstract interfaces (sensor.h, sensor_descriptor.h, sensor_data_provider.h)
-│   ├── impl/         # Concrete implementations (accelerometer, gyroscope, barometer, illuminance, magnetometer)
+│   ├── impl/         # Concrete implementations (accelerometer, gyroscope, barometer, illuminance, magnetometer, gps)
 │   ├── controllers/  # ROS 2 publishers (one controller per sensor type)
 │   ├── sensors.cc    # Sensor registry/factory
-│   └── sensors.h
+│   ├── sensors.h
+│   ├── sensor_manager.cc
+│   └── sensor_manager.h
 └── camera/           # Camera subsystem
     ├── base/         # Camera abstractions (camera_descriptor.h, camera_device.h)
     ├── camera_manager.cc
@@ -250,3 +254,77 @@ Files were moved using `git mv` to preserve history. All `#include` directives (
 **Limitations**: None - the new structure is backward-compatible since all paths are updated.
 **Issues encountered**: None significant. The restructuring was mechanical: create directories, move files with `git mv`, update includes, update CMakeLists.txt.
 **References**: Clean Architecture principles (dependency hierarchy), sensors_for_ros original structure (flat layout with controllers/ subdirectory).
+
+### Code Cleanup and Manager Pattern Refactoring
+
+**Why**: After multiple feature additions (sensors, cameras, GPS, notifications, callbacks), the `AndroidApp` class in `jni_bridge.cc` grew to 475 lines with mixed responsibilities - managing sensors, cameras, network configuration, JSON serialization, and ROS lifecycle. This "god object" anti-pattern made the code difficult to test, extend, and reason about.
+
+**Approach**: Applied the Manager pattern to extract cohesive subsystems into dedicated manager classes:
+
+1. **SensorManager** (`sensors/sensor_manager.h/cc`):
+   - Encapsulates sensor initialization, controller creation, enable/disable logic
+   - Moved sensor registry (`Sensors`) and controller lifecycle from AndroidApp
+   - Provides clean interface: `Initialize()`, `CreateControllers()`, `EnableSensor()`, `DisableSensor()`
+   - Reduced sensor-related code in AndroidApp from ~150 lines to 3 manager method calls
+
+2. **NetworkManager** (`core/network_manager.h/cc`):
+   - Manages Cyclone DDS configuration generation with caching
+   - Only regenerates `cyclonedds.xml` when domain ID or network interface changes
+   - Stores network interface list
+   - Reduced network config code from ~80 lines to single `GenerateCycloneDdsConfig()` call
+
+3. **ROS Publisher Observer Lifetime Fixes**:
+   - **Problem**: Publishers registered observer callbacks in RosInterface but never removed them, causing use-after-free bugs when publishers were destroyed
+   - **Solution**: Changed observer storage from `vector` to `map<ObserverId, callback>` with ID-based tracking
+   - Added `RemoveObserver(ObserverId)` method to RosInterface
+   - Publisher destructor now automatically removes all registered observers
+   - Each `AddObserver()` call returns an `ObserverId` that Publisher tracks in `vector<ObserverId>`
+
+**Code removed**:
+- 70+ lines of JSON serialization methods (`GetSensorListJson`, `GetCameraListJson`, etc.)
+- Duplicate sensor type-switching logic (now in SensorManager)
+- Inline Cyclone DDS XML generation with no caching (now in NetworkManager)
+
+**AndroidApp before/after**:
+```cpp
+// Before: 475 lines, direct sensor/camera/network management
+AndroidApp(const std::string &cache_dir, const std::string &package_name)
+    : sensors_(package_name) {
+  // 30+ lines of sensor initialization
+}
+
+void StartRos(...) {
+  // 100+ lines: generate cyclonedds.xml, init ROS, create controllers
+}
+
+// After: 250 lines, delegates to managers
+AndroidApp(const std::string &cache_dir, const std::string &package_name)
+    : sensor_manager_(package_name),
+      network_manager_() {
+  sensor_manager_.Initialize();
+}
+
+void StartRos(...) {
+  if (!network_manager_.GenerateCycloneDdsConfig(cache_dir_, ros_domain_id, network_interface)) {
+    return;
+  }
+  ros_.emplace(device_id);
+  ros_->Initialize(ros_domain_id);
+  size_t sensor_count = sensor_manager_.CreateControllers(*ros_);
+}
+```
+
+**Benefits**:
+- Reduced AndroidApp from 475 to ~250 lines (47% reduction)
+- Each manager has single responsibility (testable in isolation)
+- No more duplicate type-switching logic
+- NetworkManager caching prevents redundant file I/O
+- Fixed resource leaks (observer lifetime bug)
+- Clearer dependency flow: AndroidApp → Managers → ROS/Sensors/Cameras
+
+**Alternatives**: Could have split AndroidApp into multiple classes without Manager pattern, but managers provide clearer ownership and lifecycle semantics.
+**Limitations**: Managers currently have no error recovery beyond logging - failures propagate to AndroidApp as nullptrs/false returns.
+**Issues encountered**:
+- Initial namespace issue: `SensorDataProvider` in sensor_manager.cc needed `ros2_android::` qualifier
+- Observer removal required careful threading (must use mutex, copy observers before invoking outside lock)
+**References**: Clean Code (Martin), Manager pattern (Gamma et al.).

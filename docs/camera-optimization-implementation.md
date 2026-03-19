@@ -348,6 +348,69 @@ media_status_t status = AImageReader_new(
 - No frame drops observed
 - Lower memory footprint
 
+### 12. Camera Error Handling and User Notifications
+
+**Why**: Camera initialization and capture operations can fail due to device constraints, permissions, or hardware issues. Silent failures leave users confused when cameras don't work.
+
+**Approach**: Comprehensive error checking at all critical camera API calls with user notifications via the notification system.
+
+**Implementation** (`camera_device.cc:130-139, 63-122`):
+
+```cpp
+// AImageReader initialization error checking
+if (status != AMEDIA_OK)
+{
+  LOGE("Failed to create AImageReader for camera %s, status: %d", camera_id, status);
+  ros2_android::PostNotification(
+      ros2_android::NotificationSeverity::ERROR,
+      "Failed to initialize camera image reader");
+  ACameraDevice_close(camera_device->native_device_);
+  return nullptr;
+}
+
+// Capture failure callback with user notification
+void onCaptureFailed(void *context, ACameraCaptureSession *session,
+                     ACaptureRequest *request, ACameraCaptureFailure *failure)
+{
+  LOGW("Camera capture failed (session %p, reason %d, frame %lld)",
+       session, failure->reason, static_cast<long long>(failure->frameNumber));
+
+  // Only notify for non-transient failures to avoid spam
+  if (failure->reason != CAPTURE_FAILURE_REASON_FLUSHED)
+  {
+    ros2_android::PostNotification(
+        ros2_android::NotificationSeverity::WARNING,
+        "Camera capture failed");
+  }
+}
+
+// Capture sequence aborted callback
+void onCaptureSequenceAborted(void *context, ACameraCaptureSession *session,
+                              int sequenceId)
+{
+  LOGW("Camera capture sequence %d aborted", sequenceId);
+  ros2_android::PostNotification(
+      ros2_android::NotificationSeverity::WARNING,
+      "Camera capture sequence aborted");
+}
+```
+
+**Session state callbacks** (`camera_device.cc:63-76`):
+- `onSessionActive` - Logs when capture session becomes active
+- `onSessionReady` - Logs when capture session is ready
+- `onSessionClosed` - Logs when capture session closes
+
+**Benefits**:
+- Users see clear error messages when camera fails to initialize
+- Capture failures notify users (filtered to avoid spam from transient errors)
+- All errors logged for debugging
+- Automatic cleanup of partially-initialized resources on failure
+
+**Error scenarios handled**:
+- AImageReader allocation failure (out of memory, invalid format)
+- Capture request failures (hardware busy, invalid parameters)
+- Sequence aborts (session reconfiguration, app backgrounding)
+
 ## Performance Results (Phase 1 Complete)
 
 ### Current Metrics
@@ -424,15 +487,18 @@ Time sync: CLOCK_BOOTTIME → CLOCK_REALTIME
 
 ## Files Modified
 
-- `src/camera/base/camera_device.cc` - YUV conversion with rotation, stride handling, time sync, intrinsics estimation
+- `src/camera/base/camera_device.cc` - YUV conversion with rotation, stride handling, time sync, intrinsics estimation, error handling for AImageReader_new() and capture callbacks
 - `src/camera/base/camera_device.h` - Event emitter signature
 - `src/camera/controllers/camera_controller.cc` - BGR→ARGB conversion with inverse rotation, JPEG compression
 - `src/camera/controllers/camera_controller.h` - Types and interface, compressed publisher
-- `src/jni/jni_bridge.cc` - Native bitmap creation call, camera frame callbacks
+- `src/jni/jni_bridge.cc` - Native bitmap creation call, camera frame callbacks, refactored to use CameraManager
 - `src/jni/bitmap_utils.cc` - AndroidBitmap API implementation
 - `src/jni/bitmap_utils.h` - Bitmap utility interface
 - `src/core/time_utils.h` - CLOCK_BOOTTIME to CLOCK_REALTIME conversion utility
 - `src/core/camera_frame_callback_queue.h` - Event-driven callback system for UI updates
+- `src/core/notification_queue.h` - Notification system for camera errors
+- `src/camera/camera_manager.cc` - Camera lifecycle management (created during refactoring)
+- `src/camera/camera_manager.h` - Camera manager interface
 - `src/CMakeLists.txt` - libyuv and libjpeg-turbo dependencies
 
 ## Dependencies
