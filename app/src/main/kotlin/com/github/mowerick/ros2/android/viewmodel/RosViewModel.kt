@@ -513,49 +513,84 @@ class RosViewModel(
         private fun createDefaultPipelineNodes(): List<PipelineNode> = listOf(
             PipelineNode(
                 id = "zed_stereo_node",
-                name = "ZED Stereo Node",
-                description = "Captures stereo image data from the ZED camera. Runs on an external NVIDIA Jetson/PC and streams to Android via DDS.",
+                name = "ZED 2i Camera",
+                description = "Captures stereo image, depth, point cloud, and IMU data from ZED 2i camera. Runs on external NVIDIA Jetson/PC and streams to Android via DDS.",
                 state = NodeState.Stopped,
                 subscribesTo = emptyList(),
                 publishesTo = listOf(
-                    TopicInfo("/stereo_image_data", "sensor_msgs/msg/Image")
+                    TopicInfo("/zed/zed_node/rgb/image_rect_color/compressed", "sensor_msgs/msg/CompressedImage"),
+                    TopicInfo("/zed/zed_node/depth/depth_registered", "sensor_msgs/msg/Image"),
+                    TopicInfo("/zed/zed_node/point_cloud/cloud_registered", "sensor_msgs/msg/PointCloud2"),
+                    TopicInfo("/zed/zed_node/imu/data", "sensor_msgs/msg/Imu")
                 ),
                 upstreamNodeId = null,
                 isExternal = true
             ),
             PipelineNode(
-                id = "yolo_obj_detect",
-                name = "YOLO Object Detection",
-                description = "Subscribes to stereo image data and runs YOLO object detection to identify objects in 3D space.",
+                id = "object_detection",
+                name = "YOLOv9 Object Detection",
+                description = "Runs YOLOv9 + Deep SORT to detect and track Colorado Potato Beetle life stages (beetle, larva, eggs) in 3D space using ZED camera data.",
+                state = NodeState.Stopped,
                 subscribesTo = listOf(
-                    TopicInfo("/stereo_image_data", "sensor_msgs/msg/Image")
+                    TopicInfo("/zed/zed_node/rgb/image_rect_color/compressed", "sensor_msgs/msg/CompressedImage"),
+                    TopicInfo("/zed/zed_node/depth/depth_registered", "sensor_msgs/msg/Image"),
+                    TopicInfo("/zed/zed_node/point_cloud/cloud_registered", "sensor_msgs/msg/PointCloud2")
                 ),
                 publishesTo = listOf(
-                    TopicInfo("/object_xyz_pos", "geometry_msgs/msg/PointStamped")
+                    TopicInfo("/cpb_beetle_center", "geometry_msgs/msg/Point"),
+                    TopicInfo("/cpb_larva_center", "geometry_msgs/msg/Point"),
+                    TopicInfo("/cpb_eggs_center", "geometry_msgs/msg/Point"),
+                    TopicInfo("/cpb_beetle", "sensor_msgs/msg/PointCloud2"),
+                    TopicInfo("/cpb_larva", "sensor_msgs/msg/PointCloud2"),
+                    TopicInfo("/cpb_eggs", "sensor_msgs/msg/PointCloud2")
                 ),
-                upstreamNodeId = "zed_stereo_node"
+                upstreamNodeId = "zed_stereo_node",
+                isExternal = false
             ),
             PipelineNode(
-                id = "laser_positioning",
-                name = "Laser Positioning",
-                description = "Consumes detected object coordinates and determines the required positioning and targeting for actuation.",
+                id = "target_manager",
+                name = "Target Manager",
+                description = "Selects primary targets (CPB eggs) and performs IMU-based orientation calibration for laser positioning. Computes pan/tilt commands with offset correction.",
+                state = NodeState.Stopped,
                 subscribesTo = listOf(
-                    TopicInfo("/object_xyz_pos", "geometry_msgs/msg/PointStamped")
+                    TopicInfo("/cpb_eggs_center", "geometry_msgs/msg/Point"),
+                    TopicInfo("/zed/zed_node/imu/data", "sensor_msgs/msg/Imu")
                 ),
                 publishesTo = listOf(
-                    TopicInfo("/stepper_steps", "std_msgs/msg/Int32MultiArray")
+                    TopicInfo("/arm_position_goal", "std_msgs/msg/Float32MultiArray")
                 ),
-                upstreamNodeId = "yolo_obj_detect"
+                upstreamNodeId = "object_detection",
+                isExternal = false
+            ),
+            PipelineNode(
+                id = "arm_commander",
+                name = "Arm Commander",
+                description = "State machine for pan/tilt arm control with ACK/NACK protocol. Manages command retries, timeouts, and feedback synchronization with microcontroller.",
+                state = NodeState.Stopped,
+                subscribesTo = listOf(
+                    TopicInfo("/arm_position_goal", "std_msgs/msg/Float32MultiArray"),
+                    TopicInfo("/PointNShoot_ACK", "std_msgs/msg/Float32"),
+                    TopicInfo("/PointNShoot_DONE", "std_msgs/msg/Float32"),
+                    TopicInfo("/PointNShoot_NACK", "std_msgs/msg/Float32")
+                ),
+                publishesTo = listOf(
+                    TopicInfo("/PointNShoot", "std_msgs/msg/Float32MultiArray"),
+                    TopicInfo("/arm_position_feedback", "std_msgs/msg/String")
+                ),
+                upstreamNodeId = "target_manager",
+                isExternal = false
             ),
             PipelineNode(
                 id = "micro_ros_agent",
                 name = "micro-ROS Agent",
-                description = "Mediates communication between the ROS 2 network and the microcontroller via Serial/DDS bridge.",
+                description = "Bridges ROS 2 DDS network to Zephyr microcontroller via USB serial (921600 baud). Forwards /PointNShoot commands to pan/tilt arm MCU. Investigation - may require external PC.",
+                state = NodeState.Stopped,
                 subscribesTo = listOf(
-                    TopicInfo("/stepper_steps", "std_msgs/msg/Int32MultiArray")
+                    TopicInfo("/PointNShoot", "std_msgs/msg/Float32MultiArray")
                 ),
                 publishesTo = emptyList(),
-                upstreamNodeId = "laser_positioning"
+                upstreamNodeId = "arm_commander",
+                isExternal = false
             )
         )
     }
