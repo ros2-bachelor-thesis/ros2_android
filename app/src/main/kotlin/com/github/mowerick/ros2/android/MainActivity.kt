@@ -133,6 +133,7 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                 val screen by vm.screen.collectAsState()
                 val rosStarted by vm.rosStarted.collectAsState()
                 val rosDomainId by vm.rosDomainId.collectAsState()
+                val deviceId by vm.deviceId.collectAsState()
                 val sensors by vm.sensors.collectAsState()
                 val cameras by vm.cameras.collectAsState()
                 val reading by vm.currentReading.collectAsState()
@@ -163,12 +164,15 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                         rosStarted = rosStarted,
                         networkInterfaces = networkInterfaces,
                         rosDomainId = rosDomainId,
+                        deviceId = deviceId,
                         selectedNetworkInterface = selectedNetworkInterface,
                         onBack = { vm.navigateBack() },
-                        onStartRos = { domainId, iface -> vm.startRos(domainId, iface) },
+                        onStartRos = { domainId, iface, devId -> vm.startRos(domainId, iface, devId) },
+                        onRestartRos = { domainId, iface, devId -> vm.restartRos(domainId, iface, devId) },
                         onStopRos = { vm.stopRos() },
                         onRefreshInterfaces = { vm.refreshNetworkInterfaces() },
-                        onDomainIdChanged = { vm.setDomainId(it) }
+                        onDomainIdChanged = { vm.setDomainId(it) },
+                        onDeviceIdChanged = { vm.setDeviceId(it) }
                     )
                     is Screen.BuiltInSensors -> BuiltInSensorsScreen(
                         sensors = sensors,

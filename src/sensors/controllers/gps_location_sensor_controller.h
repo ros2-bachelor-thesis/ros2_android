@@ -42,6 +42,7 @@ class GpsController : public SensorDataProvider {
   sensor_msgs::msg::NavSatFix last_msg_;
   GpsLocationProvider* provider_;
   Publisher<sensor_msgs::msg::NavSatFix> publisher_;
+  RosInterface& ros_;
 };
 
 }  // namespace ros2_android

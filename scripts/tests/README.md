@@ -18,23 +18,26 @@ Interactive Python tool for visualizing and testing sensor data published by the
 
 ### IMU Sensors
 
-- **Accelerometer** (`/sensors/accelerometer`) - 3D acceleration with gravity validation
-- **Gyroscope** (`/sensors/gyroscope`) - Angular velocity with rotation detection
-- **Magnetometer** (`/sensors/magnetometer`) - Compass with magnetic field visualization
+- **Accelerometer** (`/<device_id>/sensors/accelerometer`) - 3D acceleration with gravity validation
+- **Gyroscope** (`/<device_id>/sensors/gyroscope`) - Angular velocity with rotation detection
+- **Magnetometer** (`/<device_id>/sensors/magnetometer`) - Compass with magnetic field visualization
 
 ### Environmental Sensors
 
-- **Barometer** (`/sensors/barometer`) - Pressure and altitude estimation
-- **Illuminance** (`/sensors/illuminance`) - Light sensor with animated brightness circle
+- **Barometer** (`/<device_id>/sensors/barometer`) - Pressure and altitude estimation
+- **Illuminance** (`/<device_id>/sensors/illuminance`) - Light sensor with animated brightness circle
 
 ### Positioning
 
-- **GPS** (`/sensors/gps`) - Interactive Folium map with accuracy circle
+- **GPS** (`/<device_id>/sensors/gps`) - Interactive Folium map with accuracy circle
 
 ### Camera
 
-- **Camera Image** (`camera/<id>/image_color`) - Raw/compressed image via rqt_image_view
-- **Camera Info** (`camera/<id>/camera_info`) - Calibration data display
+- **Camera Image** (`/<device_id>/camera/<id>/image_color`) - Raw/compressed image via rqt_image_view
+- **Camera Info** (`/<device_id>/camera/<id>/camera_info`) - Calibration data display
+
+> [!NOTE]
+> `<device_id>` is the device identifier configured in the ros2_android app (e.g., `pixel_7`). Replace it with your actual device ID when running tests.
 
 ## Prerequisites
 
@@ -119,7 +122,7 @@ Check that you can see the sensor topics:
 ros2 topic list
 ```
 
-You should see topics like `/sensors/accelerometer`, `/sensors/gps`, etc.
+You should see topics like `/<device_id>/sensors/accelerometer`, `/<device_id>/sensors/gps`, etc. (where `<device_id>` is your configured device identifier).
 
 ### 3. Run the Testing Framework
 

@@ -36,6 +36,7 @@ class GyroscopeSensorController : public SensorDataProvider {
   geometry_msgs::msg::TwistStamped last_msg_;
   GyroscopeSensor* sensor_;
   Publisher<geometry_msgs::msg::TwistStamped> publisher_;
+  RosInterface& ros_;
 };
 
 }  // namespace ros2_android

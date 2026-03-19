@@ -18,6 +18,8 @@ namespace ros2_android
     std::string display_name;
 
     // Topic path prefix set by CameraManager after discovery
+    // Note: Device ID is prepended by CameraController, final topics are:
+    // /<device_id>/camera/front/image_color, /<device_id>/camera/front/camera_info
     // (e.g. "camera/front/" or "camera/rear_2/")
     std::string topic_prefix;
 

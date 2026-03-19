@@ -11,6 +11,7 @@ namespace ros2_android {
 class RosInterface {
  public:
   RosInterface();
+  RosInterface(const std::string& device_id);
   ~RosInterface() = default;
 
   void Initialize(size_t ros_domain_id);
@@ -20,6 +21,7 @@ class RosInterface {
 
   rclcpp::Context::SharedPtr get_context() const;
   rclcpp::Node::SharedPtr get_node() const;
+  const std::string& GetDeviceId() const;
 
   void AddObserver(std::function<void(void)> init_or_shutdown);
 
@@ -27,6 +29,7 @@ class RosInterface {
   rclcpp::Context::SharedPtr context_;
   rclcpp::Node::SharedPtr node_;
   rclcpp::Executor::SharedPtr executor_;
+  std::string device_id_;
 
   std::vector<std::function<void(void)>> observers_;
 

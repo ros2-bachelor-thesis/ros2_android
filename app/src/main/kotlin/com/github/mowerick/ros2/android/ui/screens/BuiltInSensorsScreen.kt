@@ -86,7 +86,7 @@ fun BuiltInSensorsScreen(
                     ListItem(
                         headlineContent = { Text(camera.name) },
                         supportingContent = {
-                            Text(if (camera.enabled) "Enabled" else "Disabled")
+                            Text(camera.imageTopicName)
                         },
                         trailingContent = {
                             Switch(

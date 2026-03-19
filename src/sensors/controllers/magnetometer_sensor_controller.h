@@ -36,6 +36,7 @@ class MagnetometerSensorController : public SensorDataProvider {
   sensor_msgs::msg::MagneticField last_msg_;
   MagnetometerSensor* sensor_;
   Publisher<sensor_msgs::msg::MagneticField> publisher_;
+  RosInterface& ros_;
 };
 
 }  // namespace ros2_android

@@ -36,6 +36,7 @@ class AccelerometerSensorController : public SensorDataProvider {
   geometry_msgs::msg::AccelStamped last_msg_;
   AccelerometerSensor* sensor_;
   Publisher<geometry_msgs::msg::AccelStamped> publisher_;
+  RosInterface& ros_;
 };
 
 }  // namespace ros2_android

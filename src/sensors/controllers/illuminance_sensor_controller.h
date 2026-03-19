@@ -36,6 +36,7 @@ class IlluminanceSensorController : public SensorDataProvider {
   sensor_msgs::msg::Illuminance last_msg_;
   IlluminanceSensor* sensor_;
   Publisher<sensor_msgs::msg::Illuminance> publisher_;
+  RosInterface& ros_;
 };
 
 }  // namespace ros2_android

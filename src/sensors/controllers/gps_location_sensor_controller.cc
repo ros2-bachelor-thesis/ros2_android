@@ -12,20 +12,26 @@ namespace ros2_android
   GpsController::GpsController(GpsLocationProvider *provider, RosInterface &ros)
       : provider_(provider),
         publisher_(ros),
+        ros_(ros),
         SensorDataProvider(provider->UniqueId())
   {
     provider->SetLocationCallback(std::bind(&GpsController::OnLocationUpdate,
                                             this, std::placeholders::_1));
-    publisher_.SetTopic("/sensors/gps");
+    std::string topic = "/" + ros.GetDeviceId() + "/sensors/gps";
+    publisher_.SetTopic(topic.c_str());
   }
 
   void GpsController::OnLocationUpdate(const sensor_msgs::msg::NavSatFix &msg)
   {
+    // Create a copy and update frame_id with device namespace
+    sensor_msgs::msg::NavSatFix namespaced_msg = msg;
+    namespaced_msg.header.frame_id = ros_.GetDeviceId() + "_gps";
+
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      last_msg_ = msg;
+      last_msg_ = namespaced_msg;
     }
-    publisher_.Publish(msg);
+    publisher_.Publish(namespaced_msg);
 
     // Trigger callback to notify UI of new sensor data (throttled to 10 Hz)
     ros2_android::PostSensorDataUpdate(std::string(UniqueId()));

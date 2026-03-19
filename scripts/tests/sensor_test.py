@@ -53,9 +53,11 @@ class SensorTopicDiscovery:
         all_topics = self.node.get_topic_names_and_types()
 
         # Filter to sensor and camera topics
+        # Topics now have device_id prefix: /<device_id>/sensors/... or /<device_id>/camera/...
         sensor_topics = []
         for topic_name, topic_types in all_topics:
-            if topic_name.startswith('/sensors/') or topic_name.startswith('/camera/'):
+            # Match topics with pattern: /<something>/sensors/... or /<something>/camera/...
+            if '/sensors/' in topic_name or '/camera/' in topic_name:
                 sensor_topics.append({
                     'name': topic_name,
                     'type': topic_types[0] if topic_types else 'unknown',

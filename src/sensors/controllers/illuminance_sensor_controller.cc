@@ -10,21 +10,27 @@ IlluminanceSensorController::IlluminanceSensorController(
     IlluminanceSensor* sensor, RosInterface& ros)
     : sensor_(sensor),
       publisher_(ros),
+      ros_(ros),
       SensorDataProvider(std::string(sensor->Descriptor().name) +
                          sensor->Descriptor().vendor) {
   sensor->SetListener(
       std::bind(&IlluminanceSensorController::OnIlluminanceChanged, this,
                 std::placeholders::_1));
-  publisher_.SetTopic("/sensors/illuminance");
+  std::string topic = "/" + ros.GetDeviceId() + "/sensors/illuminance";
+  publisher_.SetTopic(topic.c_str());
 }
 
 void IlluminanceSensorController::OnIlluminanceChanged(
     const sensor_msgs::msg::Illuminance& msg) {
+  // Create a copy and update frame_id with device namespace
+  sensor_msgs::msg::Illuminance namespaced_msg = msg;
+  namespaced_msg.header.frame_id = ros_.GetDeviceId() + "_illuminance";
+
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    last_msg_ = msg;
+    last_msg_ = namespaced_msg;
   }
-  publisher_.Publish(msg);
+  publisher_.Publish(namespaced_msg);
 
   // Trigger callback to notify UI of new sensor data (throttled to 10 Hz)
   ros2_android::PostSensorDataUpdate(std::string(UniqueId()));

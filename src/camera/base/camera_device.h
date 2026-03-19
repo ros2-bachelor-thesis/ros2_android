@@ -33,7 +33,7 @@ namespace ros2_android
   {
   public:
     static std::unique_ptr<CameraDevice> OpenCamera(
-        ACameraManager *native_manager, const CameraDescriptor &desc);
+        ACameraManager *native_manager, const CameraDescriptor &desc, const std::string& device_id);
 
     ~CameraDevice();
 
@@ -50,6 +50,7 @@ namespace ros2_android
     // 640x480 resolution
     int width_ = 640;
     int height_ = 480;
+    std::string device_id_;
 
     // Get images from camera and convert them to sensor_msgs/msgs/Image
     void ProcessImages();

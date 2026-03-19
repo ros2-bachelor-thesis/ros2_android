@@ -267,7 +267,7 @@ CameraManager::~CameraManager()
 }
 
 std::unique_ptr<CameraDevice> CameraManager::OpenCamera(
-    const CameraDescriptor &desc) const
+    const CameraDescriptor &desc, const std::string& device_id) const
 {
-  return std::move(CameraDevice::OpenCamera(native_manager_, desc));
+  return std::move(CameraDevice::OpenCamera(native_manager_, desc, device_id));
 }

@@ -10,20 +10,26 @@ BarometerSensorController::BarometerSensorController(BarometerSensor* sensor,
                                                      RosInterface& ros)
     : sensor_(sensor),
       publisher_(ros),
+      ros_(ros),
       SensorDataProvider(std::string(sensor->Descriptor().name) +
                          sensor->Descriptor().vendor) {
   sensor->SetListener(std::bind(&BarometerSensorController::OnSensorReading,
                                 this, std::placeholders::_1));
-  publisher_.SetTopic("/sensors/barometer");
+  std::string topic = "/" + ros.GetDeviceId() + "/sensors/barometer";
+  publisher_.SetTopic(topic.c_str());
 }
 
 void BarometerSensorController::OnSensorReading(
     const sensor_msgs::msg::FluidPressure& msg) {
+  // Create a copy and update frame_id with device namespace
+  sensor_msgs::msg::FluidPressure namespaced_msg = msg;
+  namespaced_msg.header.frame_id = ros_.GetDeviceId() + "_barometer";
+
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    last_msg_ = msg;
+    last_msg_ = namespaced_msg;
   }
-  publisher_.Publish(msg);
+  publisher_.Publish(namespaced_msg);
 
   // Trigger callback to notify UI of new sensor data (throttled to 10 Hz)
   ros2_android::PostSensorDataUpdate(std::string(UniqueId()));

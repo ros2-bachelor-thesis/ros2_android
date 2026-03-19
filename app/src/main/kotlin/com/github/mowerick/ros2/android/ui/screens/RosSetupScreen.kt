@@ -44,12 +44,15 @@ fun RosSetupScreen(
     rosStarted: Boolean,
     networkInterfaces: List<String>,
     rosDomainId: Int,
+    deviceId: String,
     selectedNetworkInterface: String?,
     onBack: () -> Unit,
-    onStartRos: (domainId: Int, networkInterface: String) -> Unit,
+    onStartRos: (domainId: Int, networkInterface: String, deviceId: String) -> Unit,
+    onRestartRos: (domainId: Int, networkInterface: String, deviceId: String) -> Unit,
     onStopRos: () -> Unit = {},
     onRefreshInterfaces: () -> Unit = {},
     onDomainIdChanged: (Int) -> Unit,
+    onDeviceIdChanged: (String) -> Unit,
 ) {
     var selectedInterface by remember(networkInterfaces, selectedNetworkInterface) {
         mutableStateOf(
@@ -97,6 +100,29 @@ fun RosSetupScreen(
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         },
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+
+            // Device ID section
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text("Device ID", style = MaterialTheme.typography.titleSmall)
+                    TextField(
+                        value = deviceId,
+                        onValueChange = onDeviceIdChanged,
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("e.g., pixel_7, phone1") }
+                    )
+                    Text(
+                        text = "Used as namespace prefix for all published topics",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
@@ -183,8 +209,8 @@ fun RosSetupScreen(
             // Start/Restart button
             if (rosStarted) {
                 OutlinedButton(
-                    onClick = { onStartRos(rosDomainId, selectedInterface) },
-                    enabled = rosDomainId >= 0 && networkInterfaces.isNotEmpty(),
+                    onClick = { onRestartRos(rosDomainId, selectedInterface, deviceId) },
+                    enabled = rosDomainId >= 0 && networkInterfaces.isNotEmpty() && deviceId.isNotBlank(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp)
@@ -193,8 +219,8 @@ fun RosSetupScreen(
                 }
             } else {
                 Button(
-                    onClick = { onStartRos(rosDomainId, selectedInterface) },
-                    enabled = rosDomainId >= 0 && networkInterfaces.isNotEmpty(),
+                    onClick = { onStartRos(rosDomainId, selectedInterface, deviceId) },
+                    enabled = rosDomainId >= 0 && networkInterfaces.isNotEmpty() && deviceId.isNotBlank(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp)

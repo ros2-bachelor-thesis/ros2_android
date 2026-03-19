@@ -104,11 +104,12 @@ static ACameraCaptureSession_captureCallbacks captureCallbacks{
 
 /// ***************** CameraDevice ********************
 std::unique_ptr<CameraDevice> CameraDevice::OpenCamera(
-    ACameraManager *native_manager, const CameraDescriptor &desc)
+    ACameraManager *native_manager, const CameraDescriptor &desc, const std::string& device_id)
 {
   const char *camera_id = desc.id.c_str();
   auto camera_device = std::unique_ptr<CameraDevice>(new CameraDevice);
   camera_device->desc_ = desc;
+  camera_device->device_id_ = device_id;
 
   auto result = ACameraManager_openCamera(native_manager, camera_id,
                                           &(camera_device->state_callbacks_),
@@ -326,7 +327,7 @@ void CameraDevice::ProcessImages()
       // Set timestamp from camera capture time (already converted to ROS epoch time above)
       image_msg->header.stamp.sec = static_cast<int32_t>(ros_epoch_timestamp_ns / 1000000000LL);
       image_msg->header.stamp.nanosec = static_cast<uint32_t>(ros_epoch_timestamp_ns % 1000000000LL);
-      image_msg->header.frame_id = desc_.id;
+      image_msg->header.frame_id = device_id_ + "_" + desc_.id;
       image_msg->width = output_width;
       image_msg->height = output_height;
       image_msg->encoding = "bgr8";

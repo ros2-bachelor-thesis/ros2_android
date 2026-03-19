@@ -60,6 +60,7 @@ class CameraController : public SensorDataProvider {
  private:
   CameraManager* camera_manager_;
   const CameraDescriptor camera_descriptor_;
+  RosInterface& ros_;
   std::unique_ptr<CameraDevice> device_;
   Publisher<sensor_msgs::msg::CameraInfo> info_pub_;
   Publisher<sensor_msgs::msg::Image> image_pub_;

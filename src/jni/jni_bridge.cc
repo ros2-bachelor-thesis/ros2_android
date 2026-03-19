@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -51,57 +52,8 @@ public:
     LOGI("Initializing Sensors");
     sensors_.Initialize();
 
-    for (auto &sensor : sensors_.GetSensors())
-    {
-      if (ASENSOR_TYPE_LIGHT == sensor->Descriptor().type)
-      {
-        auto controller =
-            std::make_unique<ros2_android::IlluminanceSensorController>(
-                static_cast<ros2_android::IlluminanceSensor *>(sensor.get()),
-                ros_);
-        controllers_.emplace_back(std::move(controller));
-      }
-      else if (ASENSOR_TYPE_GYROSCOPE == sensor->Descriptor().type)
-      {
-        auto controller =
-            std::make_unique<ros2_android::GyroscopeSensorController>(
-                static_cast<ros2_android::GyroscopeSensor *>(sensor.get()),
-                ros_);
-        controllers_.emplace_back(std::move(controller));
-      }
-      else if (ASENSOR_TYPE_ACCELEROMETER == sensor->Descriptor().type)
-      {
-        auto controller =
-            std::make_unique<ros2_android::AccelerometerSensorController>(
-                static_cast<ros2_android::AccelerometerSensor *>(
-                    sensor.get()),
-                ros_);
-        controllers_.emplace_back(std::move(controller));
-      }
-      else if (ASENSOR_TYPE_PRESSURE == sensor->Descriptor().type)
-      {
-        auto controller =
-            std::make_unique<ros2_android::BarometerSensorController>(
-                static_cast<ros2_android::BarometerSensor *>(sensor.get()),
-                ros_);
-        controllers_.emplace_back(std::move(controller));
-      }
-      else if (ASENSOR_TYPE_MAGNETIC_FIELD == sensor->Descriptor().type)
-      {
-        auto controller =
-            std::make_unique<ros2_android::MagnetometerSensorController>(
-                static_cast<ros2_android::MagnetometerSensor *>(sensor.get()),
-                ros_);
-        controllers_.emplace_back(std::move(controller));
-      }
-    }
-
-    // Initialize GPS location provider and controller
     LOGI("Initializing GPS");
     gps_provider_ = std::make_unique<ros2_android::GpsLocationProvider>();
-    auto gps_controller = std::make_unique<ros2_android::GpsController>(
-        gps_provider_.get(), ros_);
-    controllers_.emplace_back(std::move(gps_controller));
   }
 
   ~AndroidApp() = default;
@@ -122,15 +74,18 @@ public:
       {
         LOGI("Camera: %s", cam_desc.GetName().c_str());
         // Create camera controller (publishes both raw and compressed)
-        auto camera_controller =
-            std::make_unique<ros2_android::CameraController>(
-                &camera_manager_, cam_desc, ros_);
-        camera_controllers_.emplace_back(std::move(camera_controller));
+        if (ros_)
+        {
+          auto camera_controller =
+              std::make_unique<ros2_android::CameraController>(
+                  &camera_manager_, cam_desc, *ros_);
+          camera_controllers_.emplace_back(std::move(camera_controller));
+        }
       }
     }
   }
 
-  void StartRos(int32_t ros_domain_id, const std::string &network_interface)
+  void StartRos(int32_t ros_domain_id, const std::string &network_interface, const std::string &device_id)
   {
     std::string cyclone_uri = cache_dir_;
     if (cyclone_uri.back() != '/')
@@ -140,6 +95,7 @@ public:
     cyclone_uri += "cyclonedds.xml";
     LOGI("Setting CYCLONEDDS_URI: %s", cyclone_uri.c_str());
     LOGI("Setting ROS_DOMAIN_ID: %d", ros_domain_id);
+    LOGI("Device ID: %s", device_id.c_str());
 
     setenv("CYCLONEDDS_URI", cyclone_uri.c_str(), 1);
     setenv("ROS_DOMAIN_ID", std::to_string(ros_domain_id).c_str(), 1);
@@ -164,23 +120,105 @@ public:
     config_file << "</CycloneDDS>\n";
     config_file.close();
 
-    LOGI("Generated CycloneDDS config for interface: %s, domain: %d",
-         network_interface.c_str(), ros_domain_id);
+    LOGI("Generated CycloneDDS config for interface: %s, domain: %d, device: %s",
+         network_interface.c_str(), ros_domain_id, device_id.c_str());
 
-    if (ros_.Initialized())
+    // StartRos should only be called on first start, not restart
+    // Use RestartRos for restarting with new configuration
+    if (ros_ && ros_->Initialized())
     {
-      LOGI("Shutting down ROS");
-      ros_.Shutdown();
+      LOGW("ROS is already initialized. Use RestartRos to change configuration.");
+      return;
     }
-    LOGI("Initializing ROS");
-    ros_.Initialize(ros_domain_id);
+
+    // Create ROS interface with device_id
+    ros_.emplace(device_id);
+    LOGI("Initializing ROS with device_id: %s", device_id.c_str());
+    ros_->Initialize(ros_domain_id);
+
+    // Create sensor controllers now that we have device_id
+    LOGI("Creating sensor controllers");
+    for (auto &sensor : sensors_.GetSensors())
+    {
+      if (ASENSOR_TYPE_LIGHT == sensor->Descriptor().type)
+      {
+        auto controller =
+            std::make_unique<ros2_android::IlluminanceSensorController>(
+                static_cast<ros2_android::IlluminanceSensor *>(sensor.get()),
+                *ros_);
+        controllers_.emplace_back(std::move(controller));
+      }
+      else if (ASENSOR_TYPE_GYROSCOPE == sensor->Descriptor().type)
+      {
+        auto controller =
+            std::make_unique<ros2_android::GyroscopeSensorController>(
+                static_cast<ros2_android::GyroscopeSensor *>(sensor.get()),
+                *ros_);
+        controllers_.emplace_back(std::move(controller));
+      }
+      else if (ASENSOR_TYPE_ACCELEROMETER == sensor->Descriptor().type)
+      {
+        auto controller =
+            std::make_unique<ros2_android::AccelerometerSensorController>(
+                static_cast<ros2_android::AccelerometerSensor *>(
+                    sensor.get()),
+                *ros_);
+        controllers_.emplace_back(std::move(controller));
+      }
+      else if (ASENSOR_TYPE_PRESSURE == sensor->Descriptor().type)
+      {
+        auto controller =
+            std::make_unique<ros2_android::BarometerSensorController>(
+                static_cast<ros2_android::BarometerSensor *>(sensor.get()),
+                *ros_);
+        controllers_.emplace_back(std::move(controller));
+      }
+      else if (ASENSOR_TYPE_MAGNETIC_FIELD == sensor->Descriptor().type)
+      {
+        auto controller =
+            std::make_unique<ros2_android::MagnetometerSensorController>(
+                static_cast<ros2_android::MagnetometerSensor *>(sensor.get()),
+                *ros_);
+        controllers_.emplace_back(std::move(controller));
+      }
+    }
+
+    // Create GPS controller
+    auto gps_controller = std::make_unique<ros2_android::GpsController>(
+        gps_provider_.get(), *ros_);
+    controllers_.emplace_back(std::move(gps_controller));
+    LOGI("Created %zu sensor controllers", controllers_.size());
+
+    // Create camera controllers if cameras are available
+    if (camera_manager_.HasCameras() && camera_controllers_.empty())
+    {
+      LOGI("Creating camera controllers");
+      std::vector<ros2_android::CameraDescriptor> cameras =
+          camera_manager_.GetCameras();
+      for (auto cam_desc : cameras)
+      {
+        LOGI("Camera: %s", cam_desc.GetName().c_str());
+        auto camera_controller =
+            std::make_unique<ros2_android::CameraController>(
+                &camera_manager_, cam_desc, *ros_);
+        camera_controllers_.emplace_back(std::move(camera_controller));
+      }
+      started_cameras_ = true;
+    }
   }
 
   void StopRos()
   {
-    LOGI("Stopping ROS - disabling all sensors and cameras");
+    LOGI("Stopping ROS");
 
-    // Disable all sensors
+    // First shutdown ROS context to stop executor thread
+    if (ros_ && ros_->Initialized())
+    {
+      ros_->Shutdown();
+    }
+
+    // Now safe to disable controllers (destroy publishers)
+    LOGI("Disabling all sensors and cameras");
     for (auto &controller : controllers_)
     {
       if (controller->IsEnabled())
@@ -189,7 +227,6 @@ public:
       }
     }
 
-    // Disable all cameras
     for (auto &camera : camera_controllers_)
     {
       if (camera->IsEnabled())
@@ -197,13 +234,73 @@ public:
         camera->Disable();
       }
     }
+  }
 
-    // Shutdown ROS
-    if (ros_.Initialized())
+  void RestartRos(int32_t ros_domain_id, const std::string &network_interface,
+                  const std::string &device_id)
+  {
+    LOGI("Restarting ROS with device_id: %s, domain: %d, interface: %s",
+         device_id.c_str(), ros_domain_id, network_interface.c_str());
+
+    // Step 1: Shutdown ROS context first to stop executor thread
+    // This prevents race conditions when destroying publishers
+    if (ros_ && ros_->Initialized())
     {
-      LOGI("Shutting down ROS");
-      ros_.Shutdown();
+      LOGI("Shutting down existing ROS context");
+      ros_->Shutdown();
     }
+
+    // Step 2: Disable all controllers (destroy publishers)
+    // Safe now because executor thread is stopped
+    LOGI("Disabling all controllers");
+    for (auto &controller : controllers_)
+    {
+      if (controller->IsEnabled())
+        controller->Disable();
+    }
+    for (auto &camera : camera_controllers_)
+    {
+      if (camera->IsEnabled())
+        camera->Disable();
+    }
+
+    // Step 3: Clear controller vectors to prepare for new controllers
+    LOGI("Clearing controller vectors");
+    controllers_.clear();
+    camera_controllers_.clear();
+    started_cameras_ = false;
+
+    // Step 4: Start fresh with new configuration
+    LOGI("Starting ROS with new configuration");
+    StartRos(ros_domain_id, network_interface, device_id);
+  }
+
+  void Cleanup()
+  {
+    LOGI("Cleaning up AndroidApp");
+
+    // First shutdown ROS context to stop executor thread
+    if (ros_ && ros_->Initialized())
+    {
+      ros_->Shutdown();
+    }
+
+    // Now safe to disable controllers (destroy publishers)
+    for (auto &controller : controllers_)
+    {
+      if (controller->IsEnabled())
+        controller->Disable();
+    }
+    for (auto &camera : camera_controllers_)
+    {
+      if (camera->IsEnabled())
+        camera->Disable();
+    }
+
+    // Clear controllers and shutdown sensors
+    controllers_.clear();
+    camera_controllers_.clear();
+    sensors_.Shutdown();
   }
 
   std::string GetSensorListJson()
@@ -333,9 +430,9 @@ public:
   std::vector<std::string> GetDiscoveredTopics()
   {
     std::vector<std::string> result;
-    if (!ros_.Initialized())
+    if (!ros_ || !ros_->Initialized())
       return result;
-    auto node = ros_.get_node();
+    auto node = ros_->get_node();
     if (!node)
       return result;
 
@@ -414,9 +511,9 @@ public:
 
   std::string GetDiscoveredTopicsJson()
   {
-    if (!ros_.Initialized())
+    if (!ros_ || !ros_->Initialized())
       return "[]";
-    auto node = ros_.get_node();
+    auto node = ros_->get_node();
     if (!node)
       return "[]";
 
@@ -437,7 +534,7 @@ public:
 
   std::string cache_dir_;
   std::string package_name_;
-  ros2_android::RosInterface ros_;
+  std::optional<ros2_android::RosInterface> ros_;
   ros2_android::Sensors sensors_;
 
   std::vector<std::unique_ptr<ros2_android::SensorDataProvider>>
@@ -488,8 +585,7 @@ extern "C"
     if (g_app)
     {
       LOGI("nativeDestroy");
-      g_app->sensors_.Shutdown();
-      g_app->ros_.Shutdown();
+      g_app->Cleanup();
       g_app.reset();
     }
   }
@@ -534,14 +630,16 @@ extern "C"
 
   JNIEXPORT void JNICALL
   Java_com_github_mowerick_ros2_android_NativeBridge_nativeStartRos(
-      JNIEnv *env, jobject /*thiz*/, jint domain_id, jstring network_interface)
+      JNIEnv *env, jobject /*thiz*/, jint domain_id, jstring network_interface, jstring device_id)
   {
     if (!g_app)
       return;
 
     const char *iface = env->GetStringUTFChars(network_interface, nullptr);
-    g_app->StartRos(domain_id, std::string(iface));
+    const char *dev_id = env->GetStringUTFChars(device_id, nullptr);
+    g_app->StartRos(domain_id, std::string(iface), std::string(dev_id));
     env->ReleaseStringUTFChars(network_interface, iface);
+    env->ReleaseStringUTFChars(device_id, dev_id);
   }
 
   JNIEXPORT void JNICALL
@@ -551,6 +649,20 @@ extern "C"
     if (!g_app)
       return;
     g_app->StopRos();
+  }
+
+  JNIEXPORT void JNICALL
+  Java_com_github_mowerick_ros2_android_NativeBridge_nativeRestartRos(
+      JNIEnv *env, jobject /*thiz*/, jint domain_id, jstring network_interface, jstring device_id)
+  {
+    if (!g_app)
+      return;
+
+    const char *iface = env->GetStringUTFChars(network_interface, nullptr);
+    const char *dev_id = env->GetStringUTFChars(device_id, nullptr);
+    g_app->RestartRos(domain_id, std::string(iface), std::string(dev_id));
+    env->ReleaseStringUTFChars(network_interface, iface);
+    env->ReleaseStringUTFChars(device_id, dev_id);
   }
 
   JNIEXPORT jobjectArray JNICALL

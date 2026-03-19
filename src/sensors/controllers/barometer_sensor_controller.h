@@ -36,6 +36,7 @@ class BarometerSensorController : public SensorDataProvider {
   sensor_msgs::msg::FluidPressure last_msg_;
   BarometerSensor* sensor_;
   Publisher<sensor_msgs::msg::FluidPressure> publisher_;
+  RosInterface& ros_;
 };
 
 }  // namespace ros2_android

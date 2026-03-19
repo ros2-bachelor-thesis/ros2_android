@@ -17,7 +17,7 @@ class CameraManager {
 
   const std::vector<CameraDescriptor>& GetCameras() { return cameras_; }
 
-  std::unique_ptr<CameraDevice> OpenCamera(const CameraDescriptor& desc) const;
+  std::unique_ptr<CameraDevice> OpenCamera(const CameraDescriptor& desc, const std::string& device_id) const;
 
  private:
   void DiscoverCameras();

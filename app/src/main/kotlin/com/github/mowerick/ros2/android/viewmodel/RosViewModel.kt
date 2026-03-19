@@ -19,6 +19,8 @@ import com.github.mowerick.ros2.android.model.SensorReading
 import com.github.mowerick.ros2.android.model.SensorType
 import com.github.mowerick.ros2.android.model.Severity
 import com.github.mowerick.ros2.android.model.TopicInfo
+import com.github.mowerick.ros2.android.util.getDefaultDeviceId
+import com.github.mowerick.ros2.android.util.sanitizeDeviceId
 import java.net.NetworkInterface
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,6 +51,9 @@ class RosViewModel(
 
     private val _rosDomainId = MutableStateFlow(-1)
     val rosDomainId: StateFlow<Int> = _rosDomainId
+
+    private val _deviceId = MutableStateFlow(getDefaultDeviceId(applicationContext))
+    val deviceId: StateFlow<String> = _deviceId
 
     private var multicastLock: WifiManager.MulticastLock? = null
     private val gpsManager = GpsManager(applicationContext)
@@ -229,11 +234,27 @@ class RosViewModel(
         _rosDomainId.value = id
     }
 
-    fun startRos(domainId: Int, networkInterface: String) {
+    fun setDeviceId(id: String) {
+        _deviceId.value = sanitizeDeviceId(id)
+    }
+
+    fun startRos(domainId: Int, networkInterface: String, deviceId: String) {
         // Acquire multicast lock for DDS discovery
         acquireMulticastLock()
 
-        NativeBridge.nativeStartRos(domainId, networkInterface)
+        val sanitizedDeviceId = sanitizeDeviceId(deviceId)
+        _deviceId.value = sanitizedDeviceId
+        NativeBridge.nativeStartRos(domainId, networkInterface, sanitizedDeviceId)
+        _rosDomainId.value = domainId
+        _selectedNetworkInterface.value = networkInterface
+        _rosStarted.value = true
+        refreshSensorsAndCameras()
+    }
+
+    fun restartRos(domainId: Int, networkInterface: String, deviceId: String) {
+        val sanitizedDeviceId = sanitizeDeviceId(deviceId)
+        _deviceId.value = sanitizedDeviceId
+        NativeBridge.nativeRestartRos(domainId, networkInterface, sanitizedDeviceId)
         _rosDomainId.value = domainId
         _selectedNetworkInterface.value = networkInterface
         _rosStarted.value = true
@@ -540,4 +561,5 @@ class RosViewModel(
             )
         )
     }
+
 }

@@ -22,13 +22,16 @@ CameraController::CameraController(CameraManager *camera_manager,
     : camera_manager_(camera_manager),
       camera_descriptor_(camera_descriptor),
       SensorDataProvider(camera_descriptor.GetName()),
+      ros_(ros),
       info_pub_(ros),
       image_pub_(ros),
       compressed_image_pub_(ros)
 {
-  std::string info_topic = camera_descriptor_.topic_prefix + "camera_info";
-  std::string image_topic = camera_descriptor_.topic_prefix + "image_color";
-  std::string compressed_image_topic = camera_descriptor_.topic_prefix + "image_color/compressed";
+  // Prepend device_id to topic prefix
+  std::string device_prefix = "/" + ros.GetDeviceId() + "/";
+  std::string info_topic = device_prefix + camera_descriptor_.topic_prefix + "camera_info";
+  std::string image_topic = device_prefix + camera_descriptor_.topic_prefix + "image_color";
+  std::string compressed_image_topic = device_prefix + camera_descriptor_.topic_prefix + "image_color/compressed";
 
   info_pub_.SetTopic(info_topic.c_str());
   image_pub_.SetTopic(image_topic.c_str());
@@ -50,7 +53,7 @@ CameraController::~CameraController() {}
 
 void CameraController::EnableCamera()
 {
-  device_ = camera_manager_->OpenCamera(camera_descriptor_);
+  device_ = camera_manager_->OpenCamera(camera_descriptor_, ros_.GetDeviceId());
   if (!device_)
   {
     LOGW("Failed to enable camera %s - could not open device (already in use?)",

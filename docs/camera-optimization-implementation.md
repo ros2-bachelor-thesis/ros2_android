@@ -411,8 +411,8 @@ libyuv I420ToRGB24 (NEON-optimized)
 Time sync: CLOCK_BOOTTIME → CLOCK_REALTIME
          ↓
          ├─→ ROS2 DDS Publisher (bgr8, ~900KB, rotated for landscape viewing)
-         │   ├─ Raw topic: /camera/*/image_color
-         │   ├─ Compressed topic: /camera/*/image_color/compressed (JPEG)
+         │   ├─ Raw topic: /<device_id>/camera/*/image_color
+         │   ├─ Compressed topic: /<device_id>/camera/*/image_color/compressed (JPEG)
          │   └─→ rqt_image_view, image_transport, YOLO, etc.
          │
          └─→ BGR→ARGB conversion + inverse rotation (for UI only, 10 Hz)
@@ -481,12 +481,15 @@ Current bandwidth usage: **27 MB/s at 30 FPS** (900KB × 30) for raw topics. WiF
 **Implementation**:
 
 1. **Raw topics** for local/low-latency use cases:
-   - `/camera/front/image_color` - BGR8, 900KB/frame
-   - `/camera/rear/image_color` - BGR8, 900KB/frame
+   - `/<device_id>/camera/front/image_color` - BGR8, 900KB/frame
+   - `/<device_id>/camera/rear/image_color` - BGR8, 900KB/frame
 
 2. **Compressed topics** for bandwidth-constrained scenarios:
-   - `/camera/front/image_color/compressed` - JPEG, 50-100KB/frame
-   - `/camera/rear/image_color/compressed` - JPEG, 50-100KB/frame
+   - `/<device_id>/camera/front/image_color/compressed` - JPEG, 50-100KB/frame
+   - `/<device_id>/camera/rear/image_color/compressed` - JPEG, 50-100KB/frame
+
+> [!NOTE]
+> `<device_id>` is the device identifier configured in the ros2_android app (e.g., `pixel_7`).
 
 **Code Location** (`camera_controller.h:64-66`):
 
@@ -600,14 +603,14 @@ if (compressed_image_pub_.Enabled())
 Both topics use **best-effort** QoS, so subscribers must match:
 
 ```bash
-# Raw topic
+# Raw topic (replace <device_id> with your actual device ID)
 ros2 run rqt_image_view rqt_image_view \
-  --ros-args -p image_topic:=/camera/front/image_color \
+  --ros-args -p image_topic:=/<device_id>/camera/front/image_color \
   -p qos_reliability:=best_effort
 
 # Compressed topic (recommended for WiFi)
 ros2 run rqt_image_view rqt_image_view \
-  --ros-args -p image_topic:=/camera/front/image_color/compressed \
+  --ros-args -p image_topic:=/<device_id>/camera/front/image_color/compressed \
   -p qos_reliability:=best_effort
 ```
 

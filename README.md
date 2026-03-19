@@ -69,11 +69,11 @@ Target: Android 13 (API 33), NDK 25.1.
        │
        │ Cyclone DDS (UDP multicast discovery + unicast data)
        │
-┌──────▼──────────────────────────────────────────┐
-│   ROS 2 Network (same domain ID)                │
-│   - Other ROS 2 nodes on host machine           │
-│   - Topics: /sensors/*, /camera/*/image_color   │
-└─────────────────────────────────────────────────┘
+┌─────────▼───────────────────────────────────────────────────┐
+│   ROS 2 Network (same domain ID)                            │
+│   - Other ROS 2 nodes on host machine                       │
+│   - Topics: /<device_id>/sensors/*, /<device_id>/camera/*   │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 The native layer cross-compiles ~70 ROS 2 Humble packages via a CMake superbuild. The Kotlin layer communicates with C++ through JNI, constructing Java objects directly (SensorInfo, SensorReading, CameraInfo, Bitmap) to avoid string serialization overhead. Event callbacks notify the UI layer when sensor data or camera frames are available.
@@ -90,26 +90,29 @@ The app publishes the following topics that can be discovered and consumed by ot
 
 **Sensor data:**
 
-- `/sensors/accelerometer` - `sensor_msgs/Imu` - 3-axis acceleration (m/s²)
-- `/sensors/gyroscope` - `sensor_msgs/Imu` - 3-axis angular velocity (rad/s)
-- `/sensors/magnetometer` - `sensor_msgs/MagneticField` - 3-axis magnetic field (µT)
-- `/sensors/barometer` - `sensor_msgs/FluidPressure` - atmospheric pressure (hPa)
-- `/sensors/illuminance` - `sensor_msgs/Illuminance` - ambient light (lux)
-- `/sensors/gps` - `sensor_msgs/NavSatFix` - GPS location (lat/lon/alt)
+- `/<device_id>/sensors/accelerometer` - `sensor_msgs/Imu` - 3-axis acceleration (m/s²)
+- `/<device_id>/sensors/gyroscope` - `sensor_msgs/Imu` - 3-axis angular velocity (rad/s)
+- `/<device_id>/sensors/magnetometer` - `sensor_msgs/MagneticField` - 3-axis magnetic field (µT)
+- `/<device_id>/sensors/barometer` - `sensor_msgs/FluidPressure` - atmospheric pressure (hPa)
+- `/<device_id>/sensors/illuminance` - `sensor_msgs/Illuminance` - ambient light (lux)
+- `/<device_id>/sensors/gps` - `sensor_msgs/NavSatFix` - GPS location (lat/lon/alt)
 
 **Camera image streams:**
 
-- `/camera/front/image_color` - `sensor_msgs/Image` - front camera raw BGR8 (~1-3 MB/frame)
-- `/camera/front/image_color/compressed` - `sensor_msgs/CompressedImage` - front camera JPEG (~50-100 KB/frame)
-- `/camera/rear/image_color` - `sensor_msgs/Image` - rear camera raw BGR8 (~1-3 MB/frame)
-- `/camera/rear/image_color/compressed` - `sensor_msgs/CompressedImage` - rear camera JPEG (~50-100 KB/frame)
+- `/<device_id>/camera/front/image_color` - `sensor_msgs/Image` - front camera raw BGR8 (~1-3 MB/frame)
+- `/<device_id>/camera/front/image_color/compressed` - `sensor_msgs/CompressedImage` - front camera JPEG (~50-100 KB/frame)
+- `/<device_id>/camera/rear/image_color` - `sensor_msgs/Image` - rear camera raw BGR8 (~1-3 MB/frame)
+- `/<device_id>/camera/rear/image_color/compressed` - `sensor_msgs/CompressedImage` - rear camera JPEG (~50-100 KB/frame)
 
 **Camera calibration:**
 
-- `/camera/front/camera_info` - `sensor_msgs/CameraInfo` - front camera intrinsics
-- `/camera/rear/camera_info` - `sensor_msgs/CameraInfo` - rear camera intrinsics
+- `/<device_id>/camera/front/camera_info` - `sensor_msgs/CameraInfo` - front camera intrinsics
+- `/<device_id>/camera/rear/camera_info` - `sensor_msgs/CameraInfo` - rear camera intrinsics
 
-All published messages include a `frame_id` field in the header (e.g., `"camera_front"`, `"imu_link"`) and a timestamp indicating when the data was captured. This allows other ROS 2 nodes to transform the data between coordinate frames and temporally synchronize multiple sensors using ROS 2's TF (Transform) system.
+> [!NOTE]
+> `<device_id>` is configurable in the app's ROS Setup screen and defaults to the device's sanitized name (e.g., `pixel_7`, `galaxy_s23`). This namespace allows multiple Android devices to publish on the same ROS 2 network without topic collisions.
+
+All published messages include a `frame_id` field in the header (e.g., `"<device_id>_camera_front"`, `"<device_id>_imu_link"`) and a timestamp indicating when the data was captured. This allows other ROS 2 nodes to transform the data between coordinate frames and temporally synchronize multiple sensors using ROS 2's TF (Transform) system.
 
 ## How to Build
 
