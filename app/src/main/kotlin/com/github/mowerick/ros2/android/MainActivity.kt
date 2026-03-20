@@ -234,10 +234,10 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                             LidarDetailScreen(
                                 device = device,
                                 onBack = { vm.navigateBack() },
-                                onConnect = { /* TODO: Phase 2 - USB connection */ },
-                                onDisconnect = { /* TODO: Phase 2 - USB disconnection */ },
-                                onEnable = { /* TODO: Phase 3 - enable publishing */ },
-                                onDisable = { /* TODO: Phase 3 - disable publishing */ }
+                                onConnect = { vm.connectLidar(device.uniqueId) },
+                                onDisconnect = { vm.disconnectLidar(device.uniqueId) },
+                                onEnable = { vm.enableLidar(device.uniqueId) },
+                                onDisable = { vm.disableLidar(device.uniqueId) }
                             )
                         }
                     }

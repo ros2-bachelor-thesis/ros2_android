@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.github.mowerick.ros2.android.GpsManager
 import com.github.mowerick.ros2.android.MainActivity
 import com.github.mowerick.ros2.android.NativeBridge
+import com.github.mowerick.ros2.android.UsbDeviceManager
 import com.github.mowerick.ros2.android.interfaces.NetworkInterfaceProvider
 import com.github.mowerick.ros2.android.interfaces.PermissionHandler
 import com.github.mowerick.ros2.android.model.CameraInfo
@@ -65,6 +66,7 @@ class RosViewModel(
 
     private var multicastLock: WifiManager.MulticastLock? = null
     private val gpsManager = GpsManager(applicationContext)
+    private val usbDeviceManager = UsbDeviceManager(applicationContext)
 
     private val _sensors = MutableStateFlow<List<SensorInfo>>(emptyList())
     val sensors: StateFlow<List<SensorInfo>> = _sensors
@@ -349,6 +351,7 @@ class RosViewModel(
     override fun onCleared() {
         super.onCleared()
         releaseMulticastLock()
+        usbDeviceManager.destroy()
     }
 
     // -- Dashboard navigation --
@@ -469,6 +472,58 @@ class RosViewModel(
         addNotification("GPS: Location permission required", Severity.WARNING)
     }
 
+    // -- External device control --
+
+    fun connectLidar(uniqueId: String) {
+        val device = _externalDevices.value.find { it.uniqueId == uniqueId } ?: return
+
+        // Find the UsbDevice from detected devices
+        val usbDevice = usbDeviceManager.detectLidarDevices().find {
+            usbDeviceManager.deviceToInfo(it).uniqueId == uniqueId
+        } ?: run {
+            addNotification("LIDAR device not found: $uniqueId", Severity.ERROR)
+            return
+        }
+
+        // Request permission if needed
+        usbDeviceManager.requestPermission(usbDevice) { granted ->
+            if (granted) {
+                // Open device and get file descriptor
+                val fdAndPath = usbDeviceManager.openDevice(usbDevice)
+                if (fdAndPath != null) {
+                    val (fd, path) = fdAndPath
+                    android.util.Log.i("RosViewModel", "USB device opened: fd=$fd, path=$path")
+                    // TODO: Phase 3 - pass fd to native layer via NativeBridge.nativeConnectLidar(fd, path)
+                    addNotification("LIDAR connected: $path", Severity.WARNING)
+                    refreshExternalDevices()
+                } else {
+                    addNotification("Failed to open LIDAR device", Severity.ERROR)
+                }
+            } else {
+                addNotification("USB permission denied for LIDAR", Severity.ERROR)
+            }
+        }
+    }
+
+    fun disconnectLidar(uniqueId: String) {
+        // TODO: Phase 3 - call NativeBridge.nativeDisconnectLidar(uniqueId)
+        usbDeviceManager.closeDevice()
+        addNotification("LIDAR disconnected", Severity.WARNING)
+        refreshExternalDevices()
+    }
+
+    fun enableLidar(uniqueId: String) {
+        // TODO: Phase 3 - call NativeBridge.nativeEnableLidar(uniqueId)
+        android.util.Log.i("RosViewModel", "Enable LIDAR publishing: $uniqueId")
+        refreshExternalDevices()
+    }
+
+    fun disableLidar(uniqueId: String) {
+        // TODO: Phase 3 - call NativeBridge.nativeDisableLidar(uniqueId)
+        android.util.Log.i("RosViewModel", "Disable LIDAR publishing: $uniqueId")
+        refreshExternalDevices()
+    }
+
     // -- Private helpers --
 
     private fun refreshSensorsAndCameras() {
@@ -486,9 +541,15 @@ class RosViewModel(
     }
 
     private fun refreshExternalDevices() {
-        // TODO: Will call NativeBridge.nativeGetLidarList() once native layer is implemented
-        // For now, keep empty list
-        _externalDevices.value = emptyList()
+        // Detect USB LIDAR devices
+        val lidarDevices = usbDeviceManager.detectLidarDevices()
+        _externalDevices.value = lidarDevices.map { device ->
+            usbDeviceManager.deviceToInfo(
+                device = device,
+                connected = usbDeviceManager.hasPermission(device),
+                enabled = false  // TODO: Phase 3 - query native layer for enabled status
+            )
+        }
     }
 
     private fun refreshCameras() {
