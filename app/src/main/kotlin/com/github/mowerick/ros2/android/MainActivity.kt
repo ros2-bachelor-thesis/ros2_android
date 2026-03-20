@@ -9,6 +9,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -19,6 +20,8 @@ import com.github.mowerick.ros2.android.ui.components.NotificationOverlay
 import com.github.mowerick.ros2.android.ui.screens.BuiltInSensorsScreen
 import com.github.mowerick.ros2.android.ui.screens.CameraDetailScreen
 import com.github.mowerick.ros2.android.ui.screens.DashboardScreen
+import com.github.mowerick.ros2.android.ui.screens.ExternalSensorsScreen
+import com.github.mowerick.ros2.android.ui.screens.LidarDetailScreen
 import com.github.mowerick.ros2.android.ui.screens.NodeDetailScreen
 import com.github.mowerick.ros2.android.ui.screens.RosSetupScreen
 import com.github.mowerick.ros2.android.ui.screens.SensorDetailScreen
@@ -141,6 +144,7 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                 val deviceId by vm.deviceId.collectAsState()
                 val sensors by vm.sensors.collectAsState()
                 val cameras by vm.cameras.collectAsState()
+                val externalDevices by vm.externalDevices.collectAsState()
                 val reading by vm.currentReading.collectAsState()
                 val networkInterfaces by vm.networkInterfaces.collectAsState()
                 val selectedNetworkInterface by vm.selectedNetworkInterface.collectAsState()
@@ -161,8 +165,10 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                         rosDomainId = rosDomainId,
                         sensorCount = sensors.size,
                         cameraCount = cameras.size,
+                        externalDeviceCount = externalDevices.size,
                         onSettingsClick = { vm.navigateToRosSetup() },
                         onBuiltInSensorsClick = { vm.navigateToBuiltInSensors() },
+                        onExternalSensorsClick = { vm.navigateToExternalSensors() },
                         onSubsystemClick = { vm.navigateToSubsystem() }
                     )
                     is Screen.RosSetup -> RosSetupScreen(
@@ -216,6 +222,28 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                                 onDisable = { vm.disableCamera(camera.uniqueId) }
                             )
                         }
+                    }
+                    is Screen.ExternalSensors -> ExternalSensorsScreen(
+                        devices = externalDevices,
+                        onBack = { vm.navigateBack() },
+                        onLidarClick = { vm.navigateToLidar(it) }
+                    )
+                    is Screen.LidarDetail -> {
+                        val device = externalDevices.find { it.uniqueId == s.deviceId }
+                        if (device != null) {
+                            LidarDetailScreen(
+                                device = device,
+                                onBack = { vm.navigateBack() },
+                                onConnect = { /* TODO: Phase 2 - USB connection */ },
+                                onDisconnect = { /* TODO: Phase 2 - USB disconnection */ },
+                                onEnable = { /* TODO: Phase 3 - enable publishing */ },
+                                onDisable = { /* TODO: Phase 3 - disable publishing */ }
+                            )
+                        }
+                    }
+                    is Screen.UsbCameraDetail -> {
+                        // TODO: USB camera detail screen - Phase 2+
+                        Text("USB Camera Detail - Coming Soon")
                     }
                     is Screen.Subsystem -> SubsystemScreen(
                         nodes = pipelineNodes,

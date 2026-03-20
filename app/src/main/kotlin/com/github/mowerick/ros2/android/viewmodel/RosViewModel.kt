@@ -12,6 +12,7 @@ import com.github.mowerick.ros2.android.NativeBridge
 import com.github.mowerick.ros2.android.interfaces.NetworkInterfaceProvider
 import com.github.mowerick.ros2.android.interfaces.PermissionHandler
 import com.github.mowerick.ros2.android.model.CameraInfo
+import com.github.mowerick.ros2.android.model.ExternalDeviceInfo
 import com.github.mowerick.ros2.android.model.NativeNotification
 import com.github.mowerick.ros2.android.model.NodeDependencyGraph
 import com.github.mowerick.ros2.android.model.NodeState
@@ -34,9 +35,12 @@ sealed class Screen {
     data object Dashboard : Screen()
     data object RosSetup : Screen()
     data object BuiltInSensors : Screen()
+    data object ExternalSensors : Screen()
     data object Subsystem : Screen()
     data class SensorDetail(val sensorId: String) : Screen()
     data class CameraDetail(val cameraId: String) : Screen()
+    data class LidarDetail(val deviceId: String) : Screen()
+    data class UsbCameraDetail(val deviceId: String) : Screen()
     data class NodeDetail(val nodeId: String) : Screen()
 }
 
@@ -67,6 +71,9 @@ class RosViewModel(
 
     private val _cameras = MutableStateFlow<List<CameraInfo>>(emptyList())
     val cameras: StateFlow<List<CameraInfo>> = _cameras
+
+    private val _externalDevices = MutableStateFlow<List<ExternalDeviceInfo>>(emptyList())
+    val externalDevices: StateFlow<List<ExternalDeviceInfo>> = _externalDevices
 
     private val _currentReading = MutableStateFlow<SensorReading?>(null)
     val currentReading: StateFlow<SensorReading?> = _currentReading
@@ -355,6 +362,11 @@ class RosViewModel(
         _screen.value = Screen.BuiltInSensors
     }
 
+    fun navigateToExternalSensors() {
+        refreshExternalDevices()
+        _screen.value = Screen.ExternalSensors
+    }
+
     fun navigateToSubsystem() {
         _screen.value = Screen.Subsystem
     }
@@ -370,6 +382,12 @@ class RosViewModel(
     fun navigateToCamera(camera: CameraInfo) {
         _screen.value = Screen.CameraDetail(camera.uniqueId)
         // Callback will handle frame updates automatically
+    }
+
+    // -- External device navigation --
+
+    fun navigateToLidar(device: ExternalDeviceInfo) {
+        _screen.value = Screen.LidarDetail(device.uniqueId)
     }
 
     // -- Pipeline node navigation --
@@ -399,7 +417,11 @@ class RosViewModel(
                 refreshSensorsAndCameras()
                 _screen.value = Screen.BuiltInSensors
             }
-            is Screen.BuiltInSensors, is Screen.Subsystem, is Screen.RosSetup -> {
+            is Screen.LidarDetail, is Screen.UsbCameraDetail -> {
+                refreshExternalDevices()
+                _screen.value = Screen.ExternalSensors
+            }
+            is Screen.BuiltInSensors, is Screen.ExternalSensors, is Screen.Subsystem, is Screen.RosSetup -> {
                 _screen.value = Screen.Dashboard
             }
             is Screen.NodeDetail -> {
@@ -463,8 +485,14 @@ class RosViewModel(
         }
     }
 
+    private fun refreshExternalDevices() {
+        // TODO: Will call NativeBridge.nativeGetLidarList() once native layer is implemented
+        // For now, keep empty list
+        _externalDevices.value = emptyList()
+    }
+
     private fun refreshCameras() {
-        try {
+        try{
             val cameras = NativeBridge.nativeGetCameraList()
             _cameras.value = cameras.toList()
         } catch (e: Exception) {

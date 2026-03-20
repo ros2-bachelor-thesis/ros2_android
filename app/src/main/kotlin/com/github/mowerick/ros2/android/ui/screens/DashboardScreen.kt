@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
@@ -35,8 +36,10 @@ fun DashboardScreen(
     rosDomainId: Int,
     sensorCount: Int,
     cameraCount: Int,
+    externalDeviceCount: Int,
     onSettingsClick: () -> Unit,
     onBuiltInSensorsClick: () -> Unit,
+    onExternalSensorsClick: () -> Unit,
     onSubsystemClick: () -> Unit
 ) {
     val titleText = if (rosDomainId >= 0) "Dashboard (ID: $rosDomainId)" else "Dashboard (ID: --)"
@@ -103,6 +106,16 @@ fun DashboardScreen(
                                else "Start ROS to access sensors",
                     enabled = rosStarted,
                     onClick = onBuiltInSensorsClick
+                )
+            }
+            item {
+                SectionCard(
+                    icon = Icons.Filled.Cable,
+                    title = "External Sensors",
+                    subtitle = if (rosStarted) "$externalDeviceCount devices"
+                               else "Start ROS to access external sensors",
+                    enabled = rosStarted,
+                    onClick = onExternalSensorsClick
                 )
             }
             item {
