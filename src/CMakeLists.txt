@@ -65,6 +65,12 @@ add_library(android-ros SHARED
   # GPS sensor (impl + controller)
   sensors/impl/gps_location_sensor.cc
   sensors/controllers/gps_location_sensor_controller.cc
+
+  # LIDAR device implementation
+  lidar/impl/ydlidar_device.cc
+
+  # LIDAR controller
+  lidar/controllers/lidar_controller.cc
 )
 target_link_libraries(android-ros PRIVATE
     android

@@ -19,6 +19,8 @@
 #include "jni/bitmap_utils.h"
 #include "jni/jni_object_utils.h"
 #include "jni/jvm.h"
+#include "lidar/controllers/lidar_controller.h"
+#include "lidar/impl/ydlidar_device.h"
 #include "ros/ros_interface.h"
 #include "sensors/base/sensor_data_provider.h"
 #include "sensors/controllers/gps_location_sensor_controller.h"
@@ -368,36 +370,34 @@ public:
     }
   }
 
-  // LIDAR device management (Phase 3 - stub implementation)
-  // Phase 4 will replace these with proper LidarController integration
+  // LIDAR device management
 
   bool ConnectLidar(int fd, const std::string& device_path, const std::string& unique_id)
   {
     LOGI("ConnectLidar: fd=%d, path=%s, id=%s", fd, device_path.c_str(), unique_id.c_str());
 
     // Check if already connected
-    for (const auto& lidar : lidar_devices_)
+    for (const auto& controller : lidar_controllers_)
     {
-      if (lidar.unique_id == unique_id)
+      if (controller->GetUniqueId() == unique_id)
       {
         LOGW("LIDAR %s already connected", unique_id.c_str());
         return false;
       }
     }
 
-    // Store device info (Phase 4 will create actual LidarController here)
-    LidarDeviceStub device;
-    device.unique_id = unique_id;
-    device.device_path = device_path;
-    device.fd = fd;
-    device.enabled = false;
+    // Create YDLidar device
+    auto device = std::make_unique<ros2_android::YDLidarDevice>(fd, device_path, unique_id);
 
-    lidar_devices_.push_back(device);
+    // Create controller (dereference optional ros_)
+    auto controller = std::make_unique<ros2_android::LidarController>(std::move(device), *ros_);
+
+    lidar_controllers_.push_back(std::move(controller));
     LOGI("LIDAR connected successfully: %s", unique_id.c_str());
 
     ros2_android::PostNotification(
         ros2_android::NotificationSeverity::WARNING,
-        "LIDAR device registered (native stub)");
+        "LIDAR device connected");
 
     return true;
   }
@@ -406,14 +406,16 @@ public:
   {
     LOGI("DisconnectLidar: id=%s", unique_id.c_str());
 
-    auto it = std::find_if(lidar_devices_.begin(), lidar_devices_.end(),
-                           [&](const LidarDeviceStub& dev) {
-                             return dev.unique_id == unique_id;
+    auto it = std::find_if(lidar_controllers_.begin(), lidar_controllers_.end(),
+                           [&](const std::unique_ptr<ros2_android::LidarController>& controller) {
+                             return controller->GetUniqueId() == unique_id;
                            });
 
-    if (it != lidar_devices_.end())
+    if (it != lidar_controllers_.end())
     {
-      lidar_devices_.erase(it);
+      // Disable before removing
+      (*it)->Disable();
+      lidar_controllers_.erase(it);
       LOGI("LIDAR disconnected: %s", unique_id.c_str());
       return true;
     }
@@ -426,13 +428,12 @@ public:
   {
     LOGI("EnableLidar: id=%s", unique_id.c_str());
 
-    for (auto& lidar : lidar_devices_)
+    for (auto& controller : lidar_controllers_)
     {
-      if (lidar.unique_id == unique_id)
+      if (controller->GetUniqueId() == unique_id)
       {
-        lidar.enabled = true;
-        LOGI("LIDAR publishing enabled (stub): %s", unique_id.c_str());
-        // Phase 4: call lidar_controller->Enable()
+        controller->Enable();
+        LOGI("LIDAR publishing enabled: %s", unique_id.c_str());
         return true;
       }
     }
@@ -445,13 +446,12 @@ public:
   {
     LOGI("DisableLidar: id=%s", unique_id.c_str());
 
-    for (auto& lidar : lidar_devices_)
+    for (auto& controller : lidar_controllers_)
     {
-      if (lidar.unique_id == unique_id)
+      if (controller->GetUniqueId() == unique_id)
       {
-        lidar.enabled = false;
-        LOGI("LIDAR publishing disabled (stub): %s", unique_id.c_str());
-        // Phase 4: call lidar_controller->Disable()
+        controller->Disable();
+        LOGI("LIDAR publishing disabled: %s", unique_id.c_str());
         return true;
       }
     }
@@ -481,14 +481,8 @@ public:
       camera_controllers_;
   bool started_cameras_ = false;
 
-  // LIDAR devices (Phase 4 - will use proper LidarController class)
-  struct LidarDeviceStub {
-    std::string unique_id;
-    std::string device_path;
-    int fd;
-    bool enabled;
-  };
-  std::vector<LidarDeviceStub> lidar_devices_;
+  // LIDAR devices
+  std::vector<std::unique_ptr<ros2_android::LidarController>> lidar_controllers_;
 };
 
 static std::unique_ptr<AndroidApp> g_app;
@@ -1035,21 +1029,21 @@ extern "C"
       return ros2_android::jni::CreateExternalDeviceInfoArray(env, {});
     }
 
-    // Convert stub devices to ExternalDeviceInfoData
+    // Convert lidar controllers to ExternalDeviceInfoData
     std::vector<ros2_android::jni::ExternalDeviceInfoData> devices;
-    for (const auto &stub : g_app->lidar_devices_)
+    for (const auto &controller : g_app->lidar_controllers_)
     {
       ros2_android::jni::ExternalDeviceInfoData data;
-      data.uniqueId = stub.unique_id;
-      data.name = "YDLIDAR (stub)";
+      data.uniqueId = controller->GetUniqueId();
+      data.name = "YDLIDAR";
       data.deviceType = "LIDAR";
-      data.usbPath = stub.device_path;
-      data.vendorId = 0;  // Not tracked in stub
-      data.productId = 0; // Not tracked in stub
-      data.topicName = "/scan";
-      data.topicType = "sensor_msgs/msg/LaserScan";
+      data.usbPath = controller->GetDevicePath();
+      data.vendorId = 0;  // Not tracked
+      data.productId = 0; // Not tracked
+      data.topicName = controller->TopicName();
+      data.topicType = controller->TopicType();
       data.connected = true;  // If it's in the list, it's connected
-      data.enabled = stub.enabled;
+      data.enabled = controller->IsEnabled();
       devices.push_back(data);
     }
 
