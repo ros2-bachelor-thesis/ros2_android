@@ -475,8 +475,6 @@ class RosViewModel(
     // -- External device control --
 
     fun connectLidar(uniqueId: String) {
-        val device = _externalDevices.value.find { it.uniqueId == uniqueId } ?: return
-
         // Find the UsbDevice from detected devices
         val usbDevice = usbDeviceManager.detectLidarDevices().find {
             usbDeviceManager.deviceToInfo(it).uniqueId == uniqueId
@@ -493,9 +491,16 @@ class RosViewModel(
                 if (fdAndPath != null) {
                     val (fd, path) = fdAndPath
                     android.util.Log.i("RosViewModel", "USB device opened: fd=$fd, path=$path")
-                    // TODO: Phase 3 - pass fd to native layer via NativeBridge.nativeConnectLidar(fd, path)
-                    addNotification("LIDAR connected: $path", Severity.WARNING)
-                    refreshExternalDevices()
+
+                    // Pass FD to native layer
+                    val success = NativeBridge.nativeConnectLidar(fd, path, uniqueId)
+                    if (success) {
+                        addNotification("LIDAR connected: $path", Severity.WARNING)
+                        refreshExternalDevices()
+                    } else {
+                        addNotification("Failed to initialize LIDAR in native layer", Severity.ERROR)
+                        usbDeviceManager.closeDevice()
+                    }
                 } else {
                     addNotification("Failed to open LIDAR device", Severity.ERROR)
                 }
@@ -506,22 +511,36 @@ class RosViewModel(
     }
 
     fun disconnectLidar(uniqueId: String) {
-        // TODO: Phase 3 - call NativeBridge.nativeDisconnectLidar(uniqueId)
-        usbDeviceManager.closeDevice()
-        addNotification("LIDAR disconnected", Severity.WARNING)
-        refreshExternalDevices()
+        val success = NativeBridge.nativeDisconnectLidar(uniqueId)
+        if (success) {
+            usbDeviceManager.closeDevice()
+            addNotification("LIDAR disconnected", Severity.WARNING)
+            refreshExternalDevices()
+        } else {
+            addNotification("Failed to disconnect LIDAR", Severity.ERROR)
+        }
     }
 
     fun enableLidar(uniqueId: String) {
-        // TODO: Phase 3 - call NativeBridge.nativeEnableLidar(uniqueId)
-        android.util.Log.i("RosViewModel", "Enable LIDAR publishing: $uniqueId")
-        refreshExternalDevices()
+        val success = NativeBridge.nativeEnableLidar(uniqueId)
+        if (success) {
+            android.util.Log.i("RosViewModel", "LIDAR publishing enabled: $uniqueId")
+            addNotification("LIDAR publishing enabled", Severity.WARNING)
+            refreshExternalDevices()
+        } else {
+            addNotification("Failed to enable LIDAR publishing", Severity.ERROR)
+        }
     }
 
     fun disableLidar(uniqueId: String) {
-        // TODO: Phase 3 - call NativeBridge.nativeDisableLidar(uniqueId)
-        android.util.Log.i("RosViewModel", "Disable LIDAR publishing: $uniqueId")
-        refreshExternalDevices()
+        val success = NativeBridge.nativeDisableLidar(uniqueId)
+        if (success) {
+            android.util.Log.i("RosViewModel", "LIDAR publishing disabled: $uniqueId")
+            addNotification("LIDAR publishing disabled", Severity.WARNING)
+            refreshExternalDevices()
+        } else {
+            addNotification("Failed to disable LIDAR publishing", Severity.ERROR)
+        }
     }
 
     // -- Private helpers --

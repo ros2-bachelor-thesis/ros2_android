@@ -414,5 +414,144 @@ namespace ros2_android
             return array;
         }
 
+        jobject CreateExternalDeviceInfo(JNIEnv *env, const ExternalDeviceInfoData &data)
+        {
+            if (!env)
+            {
+                LOGE("CreateExternalDeviceInfo: Invalid JNIEnv");
+                return nullptr;
+            }
+
+            // Find ExternalDeviceInfo class
+            jclass deviceInfoClass = env->FindClass("com/github/mowerick/ros2/android/model/ExternalDeviceInfo");
+            if (!deviceInfoClass)
+            {
+                LOGE("Failed to find ExternalDeviceInfo class");
+                return nullptr;
+            }
+
+            // Find ExternalDeviceType enum class
+            jclass deviceTypeClass = env->FindClass("com/github/mowerick/ros2/android/model/ExternalDeviceType");
+            if (!deviceTypeClass)
+            {
+                LOGE("Failed to find ExternalDeviceType class");
+                env->DeleteLocalRef(deviceInfoClass);
+                return nullptr;
+            }
+
+            // Get the enum value
+            jfieldID deviceTypeField = env->GetStaticFieldID(
+                deviceTypeClass,
+                data.deviceType.c_str(),
+                "Lcom/github/mowerick/ros2/android/model/ExternalDeviceType;");
+
+            if (!deviceTypeField)
+            {
+                LOGE("Failed to find ExternalDeviceType.%s", data.deviceType.c_str());
+                env->DeleteLocalRef(deviceInfoClass);
+                env->DeleteLocalRef(deviceTypeClass);
+                return nullptr;
+            }
+
+            jobject deviceTypeEnum = env->GetStaticObjectField(deviceTypeClass, deviceTypeField);
+            if (!deviceTypeEnum)
+            {
+                LOGE("Failed to get ExternalDeviceType enum value");
+                env->DeleteLocalRef(deviceInfoClass);
+                env->DeleteLocalRef(deviceTypeClass);
+                return nullptr;
+            }
+
+            // Get constructor
+            jmethodID constructor = env->GetMethodID(
+                deviceInfoClass,
+                "<init>",
+                "(Ljava/lang/String;Ljava/lang/String;Lcom/github/mowerick/ros2/android/model/ExternalDeviceType;Ljava/lang/String;IILjava/lang/String;Ljava/lang/String;ZZ)V");
+
+            if (!constructor)
+            {
+                LOGE("Failed to find ExternalDeviceInfo constructor");
+                env->DeleteLocalRef(deviceInfoClass);
+                env->DeleteLocalRef(deviceTypeClass);
+                env->DeleteLocalRef(deviceTypeEnum);
+                return nullptr;
+            }
+
+            // Create strings
+            jstring uniqueId = env->NewStringUTF(data.uniqueId.c_str());
+            jstring name = env->NewStringUTF(data.name.c_str());
+            jstring usbPath = env->NewStringUTF(data.usbPath.c_str());
+            jstring topicName = env->NewStringUTF(data.topicName.c_str());
+            jstring topicType = env->NewStringUTF(data.topicType.c_str());
+
+            // Create ExternalDeviceInfo object
+            jobject deviceInfo = env->NewObject(
+                deviceInfoClass,
+                constructor,
+                uniqueId,
+                name,
+                deviceTypeEnum,
+                usbPath,
+                static_cast<jint>(data.vendorId),
+                static_cast<jint>(data.productId),
+                topicName,
+                topicType,
+                static_cast<jboolean>(data.connected),
+                static_cast<jboolean>(data.enabled));
+
+            // Clean up local references
+            env->DeleteLocalRef(uniqueId);
+            env->DeleteLocalRef(name);
+            env->DeleteLocalRef(usbPath);
+            env->DeleteLocalRef(topicName);
+            env->DeleteLocalRef(topicType);
+            env->DeleteLocalRef(deviceTypeEnum);
+            env->DeleteLocalRef(deviceTypeClass);
+            env->DeleteLocalRef(deviceInfoClass);
+
+            return deviceInfo;
+        }
+
+        jobjectArray CreateExternalDeviceInfoArray(JNIEnv *env, const std::vector<ExternalDeviceInfoData> &data)
+        {
+            if (!env)
+            {
+                LOGE("CreateExternalDeviceInfoArray: Invalid JNIEnv");
+                return nullptr;
+            }
+
+            jclass deviceInfoClass = env->FindClass("com/github/mowerick/ros2/android/model/ExternalDeviceInfo");
+            if (!deviceInfoClass)
+            {
+                LOGE("Failed to find ExternalDeviceInfo class");
+                return nullptr;
+            }
+
+            jobjectArray array = env->NewObjectArray(
+                static_cast<jsize>(data.size()),
+                deviceInfoClass,
+                nullptr);
+
+            if (!array)
+            {
+                LOGE("Failed to create ExternalDeviceInfo array");
+                env->DeleteLocalRef(deviceInfoClass);
+                return nullptr;
+            }
+
+            for (size_t i = 0; i < data.size(); ++i)
+            {
+                jobject obj = CreateExternalDeviceInfo(env, data[i]);
+                if (obj)
+                {
+                    env->SetObjectArrayElement(array, static_cast<jsize>(i), obj);
+                    env->DeleteLocalRef(obj);
+                }
+            }
+
+            env->DeleteLocalRef(deviceInfoClass);
+            return array;
+        }
+
     } // namespace jni
 } // namespace ros2_android

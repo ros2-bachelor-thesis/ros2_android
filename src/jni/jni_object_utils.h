@@ -54,6 +54,20 @@ struct SensorReadingData {
     SensorType sensorType;
 };
 
+// ExternalDeviceInfo structure matching Kotlin data class
+struct ExternalDeviceInfoData {
+    std::string uniqueId;
+    std::string name;
+    std::string deviceType;  // "LIDAR" or "USB_CAMERA"
+    std::string usbPath;
+    int vendorId;
+    int productId;
+    std::string topicName;
+    std::string topicType;
+    bool connected;
+    bool enabled;
+};
+
 // Create a SensorInfo Kotlin object from native data
 jobject CreateSensorInfo(JNIEnv* env, const SensorInfoData& data);
 
@@ -71,6 +85,12 @@ jobject CreateSensorReading(JNIEnv* env, const SensorReadingData& data);
 
 // Create a String array from vector<string>
 jobjectArray CreateStringArray(JNIEnv* env, const std::vector<std::string>& strings);
+
+// Create an ExternalDeviceInfo Kotlin object from native data
+jobject CreateExternalDeviceInfo(JNIEnv* env, const ExternalDeviceInfoData& data);
+
+// Create an array of ExternalDeviceInfo objects
+jobjectArray CreateExternalDeviceInfoArray(JNIEnv* env, const std::vector<ExternalDeviceInfoData>& data);
 
 } // namespace jni
 } // namespace ros2_android

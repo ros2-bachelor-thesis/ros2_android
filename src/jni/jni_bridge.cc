@@ -368,6 +368,98 @@ public:
     }
   }
 
+  // LIDAR device management (Phase 3 - stub implementation)
+  // Phase 4 will replace these with proper LidarController integration
+
+  bool ConnectLidar(int fd, const std::string& device_path, const std::string& unique_id)
+  {
+    LOGI("ConnectLidar: fd=%d, path=%s, id=%s", fd, device_path.c_str(), unique_id.c_str());
+
+    // Check if already connected
+    for (const auto& lidar : lidar_devices_)
+    {
+      if (lidar.unique_id == unique_id)
+      {
+        LOGW("LIDAR %s already connected", unique_id.c_str());
+        return false;
+      }
+    }
+
+    // Store device info (Phase 4 will create actual LidarController here)
+    LidarDeviceStub device;
+    device.unique_id = unique_id;
+    device.device_path = device_path;
+    device.fd = fd;
+    device.enabled = false;
+
+    lidar_devices_.push_back(device);
+    LOGI("LIDAR connected successfully: %s", unique_id.c_str());
+
+    ros2_android::PostNotification(
+        ros2_android::NotificationSeverity::WARNING,
+        "LIDAR device registered (native stub)");
+
+    return true;
+  }
+
+  bool DisconnectLidar(const std::string& unique_id)
+  {
+    LOGI("DisconnectLidar: id=%s", unique_id.c_str());
+
+    auto it = std::find_if(lidar_devices_.begin(), lidar_devices_.end(),
+                           [&](const LidarDeviceStub& dev) {
+                             return dev.unique_id == unique_id;
+                           });
+
+    if (it != lidar_devices_.end())
+    {
+      lidar_devices_.erase(it);
+      LOGI("LIDAR disconnected: %s", unique_id.c_str());
+      return true;
+    }
+
+    LOGW("LIDAR not found: %s", unique_id.c_str());
+    return false;
+  }
+
+  bool EnableLidar(const std::string& unique_id)
+  {
+    LOGI("EnableLidar: id=%s", unique_id.c_str());
+
+    for (auto& lidar : lidar_devices_)
+    {
+      if (lidar.unique_id == unique_id)
+      {
+        lidar.enabled = true;
+        LOGI("LIDAR publishing enabled (stub): %s", unique_id.c_str());
+        // Phase 4: call lidar_controller->Enable()
+        return true;
+      }
+    }
+
+    LOGW("LIDAR not found: %s", unique_id.c_str());
+    return false;
+  }
+
+  bool DisableLidar(const std::string& unique_id)
+  {
+    LOGI("DisableLidar: id=%s", unique_id.c_str());
+
+    for (auto& lidar : lidar_devices_)
+    {
+      if (lidar.unique_id == unique_id)
+      {
+        lidar.enabled = false;
+        LOGI("LIDAR publishing disabled (stub): %s", unique_id.c_str());
+        // Phase 4: call lidar_controller->Disable()
+        return true;
+      }
+    }
+
+    LOGW("LIDAR not found: %s", unique_id.c_str());
+    return false;
+  }
+
   // GetDiscoveredTopicsJson removed - using structured GetDiscoveredTopics() instead
 
   std::string cache_dir_;
@@ -388,6 +480,15 @@ public:
   std::vector<std::unique_ptr<ros2_android::CameraController>>
       camera_controllers_;
   bool started_cameras_ = false;
+
+  // LIDAR devices (Phase 4 - will use proper LidarController class)
+  struct LidarDeviceStub {
+    std::string unique_id;
+    std::string device_path;
+    int fd;
+    bool enabled;
+  };
+  std::vector<LidarDeviceStub> lidar_devices_;
 };
 
 static std::unique_ptr<AndroidApp> g_app;
@@ -890,6 +991,97 @@ extern "C"
         });
 
     LOGI("Camera frame callback registered");
+  }
+
+  // LIDAR device management
+  JNIEXPORT jboolean JNICALL
+  Java_com_github_mowerick_ros2_android_NativeBridge_nativeConnectLidar(
+      JNIEnv *env, jobject /*thiz*/, jint fd, jstring device_path, jstring unique_id)
+  {
+    if (!g_app)
+      return JNI_FALSE;
+
+    const char *path = env->GetStringUTFChars(device_path, nullptr);
+    const char *id = env->GetStringUTFChars(unique_id, nullptr);
+
+    bool success = g_app->ConnectLidar(fd, std::string(path), std::string(id));
+
+    env->ReleaseStringUTFChars(device_path, path);
+    env->ReleaseStringUTFChars(unique_id, id);
+
+    return success ? JNI_TRUE : JNI_FALSE;
+  }
+
+  JNIEXPORT jboolean JNICALL
+  Java_com_github_mowerick_ros2_android_NativeBridge_nativeDisconnectLidar(
+      JNIEnv *env, jobject /*thiz*/, jstring unique_id)
+  {
+    if (!g_app)
+      return JNI_FALSE;
+
+    const char *id = env->GetStringUTFChars(unique_id, nullptr);
+    bool success = g_app->DisconnectLidar(std::string(id));
+    env->ReleaseStringUTFChars(unique_id, id);
+
+    return success ? JNI_TRUE : JNI_FALSE;
+  }
+
+  JNIEXPORT jobjectArray JNICALL
+  Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetLidarList(
+      JNIEnv *env, jobject /*thiz*/)
+  {
+    if (!g_app)
+    {
+      return ros2_android::jni::CreateExternalDeviceInfoArray(env, {});
+    }
+
+    // Convert stub devices to ExternalDeviceInfoData
+    std::vector<ros2_android::jni::ExternalDeviceInfoData> devices;
+    for (const auto &stub : g_app->lidar_devices_)
+    {
+      ros2_android::jni::ExternalDeviceInfoData data;
+      data.uniqueId = stub.unique_id;
+      data.name = "YDLIDAR (stub)";
+      data.deviceType = "LIDAR";
+      data.usbPath = stub.device_path;
+      data.vendorId = 0;  // Not tracked in stub
+      data.productId = 0; // Not tracked in stub
+      data.topicName = "/scan";
+      data.topicType = "sensor_msgs/msg/LaserScan";
+      data.connected = true;  // If it's in the list, it's connected
+      data.enabled = stub.enabled;
+      devices.push_back(data);
+    }
+
+    return ros2_android::jni::CreateExternalDeviceInfoArray(env, devices);
+  }
+
+  JNIEXPORT jboolean JNICALL
+  Java_com_github_mowerick_ros2_android_NativeBridge_nativeEnableLidar(
+      JNIEnv *env, jobject /*thiz*/, jstring unique_id)
+  {
+    if (!g_app)
+      return JNI_FALSE;
+
+    const char *id = env->GetStringUTFChars(unique_id, nullptr);
+    bool success = g_app->EnableLidar(std::string(id));
+    env->ReleaseStringUTFChars(unique_id, id);
+
+    return success ? JNI_TRUE : JNI_FALSE;
+  }
+
+  JNIEXPORT jboolean JNICALL
+  Java_com_github_mowerick_ros2_android_NativeBridge_nativeDisableLidar(
+      JNIEnv *env, jobject /*thiz*/, jstring unique_id)
+  {
+    if (!g_app)
+      return JNI_FALSE;
+
+    const char *id = env->GetStringUTFChars(unique_id, nullptr);
+    bool success = g_app->DisableLidar(std::string(id));
+    env->ReleaseStringUTFChars(unique_id, id);
+
+    return success ? JNI_TRUE : JNI_FALSE;
   }
 
 } // extern "C"

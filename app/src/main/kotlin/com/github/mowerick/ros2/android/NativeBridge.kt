@@ -2,6 +2,7 @@ package com.github.mowerick.ros2.android
 
 import android.graphics.Bitmap
 import com.github.mowerick.ros2.android.model.CameraInfo
+import com.github.mowerick.ros2.android.model.ExternalDeviceInfo
 import com.github.mowerick.ros2.android.model.SensorInfo
 import com.github.mowerick.ros2.android.model.SensorReading
 
@@ -44,6 +45,13 @@ object NativeBridge {
         altitudeAccuracy: Float,
         timestampNs: Long
     )
+
+    // LIDAR device management
+    external fun nativeConnectLidar(fd: Int, devicePath: String, uniqueId: String): Boolean
+    external fun nativeDisconnectLidar(uniqueId: String): Boolean
+    external fun nativeGetLidarList(): Array<ExternalDeviceInfo>
+    external fun nativeEnableLidar(uniqueId: String): Boolean
+    external fun nativeDisableLidar(uniqueId: String): Boolean
 
     fun setNotificationCallback(callback: (severity: String, message: String) -> Unit) {
         notificationCallback = callback
