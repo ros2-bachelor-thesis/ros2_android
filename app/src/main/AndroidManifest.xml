@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
+    <!-- TODO: debuggable should be set as build parameters-->
     <application
         android:allowBackup="true"
+
         android:debuggable="true"
         android:enableOnBackInvokedCallback="true"
         android:icon="@drawable/ic_launcher"
@@ -10,6 +11,7 @@
         android:supportsRtl="true">
         <activity
             android:name=".MainActivity"
+            android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:screenOrientation="locked"
             android:exported="true">

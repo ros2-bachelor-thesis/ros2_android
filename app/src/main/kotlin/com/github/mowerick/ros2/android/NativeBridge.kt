@@ -33,7 +33,6 @@ object NativeBridge {
     external fun nativeGetNetworkInterfaces(): Array<String>
     external fun nativeGetDiscoveredTopics(): Array<String>
     external fun nativeGetCameraFrame(uniqueId: String): Bitmap?
-    external fun nativeGetPendingNotifications(): String
     external fun nativeSetNotificationCallback()
     external fun nativeSetSensorDataCallback()
     external fun nativeSetCameraFrameCallback()
@@ -45,10 +44,6 @@ object NativeBridge {
         altitudeAccuracy: Float,
         timestampNs: Long
     )
-
-    // TTY device detection (rooted device approach)
-    external fun nativeDetectTtyDevices(): Array<ExternalDeviceInfo>
-    external fun nativeCanAccessTty(ttyPath: String): Boolean
 
     // LIDAR device management
     external fun nativeConnectLidar(ttyPath: String, uniqueId: String): Boolean

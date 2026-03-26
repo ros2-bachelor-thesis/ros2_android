@@ -3,13 +3,13 @@ package com.github.mowerick.ros2.android.viewmodel
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.hardware.usb.UsbDevice
 import android.net.wifi.WifiManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.mowerick.ros2.android.GpsManager
 import com.github.mowerick.ros2.android.MainActivity
 import com.github.mowerick.ros2.android.NativeBridge
-import com.github.mowerick.ros2.android.RootPermissionManager
 import com.github.mowerick.ros2.android.UsbSerialManager
 import com.github.mowerick.ros2.android.UsbSerialBridge
 import com.github.mowerick.ros2.android.interfaces.NetworkInterfaceProvider
@@ -28,7 +28,6 @@ import com.github.mowerick.ros2.android.model.TopicInfo
 import com.github.mowerick.ros2.android.util.getDefaultDeviceId
 import com.github.mowerick.ros2.android.util.sanitizeDeviceId
 import com.jakewharton.processphoenix.ProcessPhoenix
-import java.net.NetworkInterface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -541,6 +540,44 @@ class RosViewModel(
             refreshExternalDevices()
         } else {
             addNotification("Failed to disable LIDAR publishing", Severity.ERROR)
+        }
+    }
+
+    /**
+     * Handle USB device attachment (called from MainActivity when device is plugged in)
+     *
+     * Automatically detects if the device is a LIDAR, shows notification, and navigates to
+     * External Sensors screen ONLY if ROS is already running. If ROS is not running, just
+     * shows notification and stays on current screen (usually Dashboard).
+     */
+    fun handleUsbDeviceAttached(device: UsbDevice) {
+        viewModelScope.launch(Dispatchers.IO) {
+            android.util.Log.i("RosViewModel", "Handling USB device attachment: ${device.deviceName} (VID=${device.vendorId}, PID=${device.productId})")
+
+            // Check if this device is a known LIDAR
+            val detectedDevices = usbSerialManager.detectLidarDevices()
+            val matchingDevice = detectedDevices.find {
+                it.vendorId == device.vendorId && it.productId == device.productId
+            }
+
+            if (matchingDevice != null) {
+                android.util.Log.i("RosViewModel", "USB device identified as LIDAR: ${matchingDevice.name}")
+
+                // Show notification and conditionally navigate
+                withContext(Dispatchers.Main) {
+                    if (_rosStarted.value) {
+                        // ROS is running - navigate to External Sensors screen
+                        addNotification("LIDAR detected: ${matchingDevice.name}", Severity.WARNING)
+                        navigateToExternalSensors()
+                        refreshExternalDevices()
+                    } else {
+                        // ROS not running - just notify user
+                        addNotification("LIDAR detected: ${matchingDevice.name}. Start ROS to use it.", Severity.WARNING)
+                    }
+                }
+            } else {
+                android.util.Log.i("RosViewModel", "USB device is not a recognized LIDAR")
+            }
         }
     }
 

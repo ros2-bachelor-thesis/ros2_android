@@ -175,48 +175,83 @@ public:
 
   void Cleanup()
   {
-    LOGI("Cleaning up AndroidApp");
+    LOGI("Cleaning up AndroidApp - START");
 
     // Disable and clear camera controllers first (they have threads)
+    LOGI("Cleanup: Clearing %zu camera controllers", camera_controllers_.size());
     for (auto &camera : camera_controllers_)
     {
       if (camera->IsEnabled())
         camera->Disable();
     }
     camera_controllers_.clear();
+    LOGI("Cleanup: Camera controllers cleared");
 
     // Clear GPS controllers
+    LOGI("Cleanup: Clearing %zu GPS controllers", gps_controllers_.size());
     for (auto &gps : gps_controllers_)
     {
       if (gps->IsEnabled())
         gps->Disable();
     }
     gps_controllers_.clear();
+    LOGI("Cleanup: GPS controllers cleared");
 
-    // SensorManager handles its own cleanup
+    // Clear LIDAR controllers
+    LOGI("Cleanup: Clearing %zu LIDAR controllers", lidar_controllers_.size());
+    for (auto &lidar : lidar_controllers_)
+    {
+      if (lidar->IsEnabled())
+      {
+        LOGI("Cleanup: Disabling LIDAR controller");
+        lidar->Disable();
+      }
+    }
+    lidar_controllers_.clear();
+    LOGI("Cleanup: LIDAR controllers cleared");
+
+    // IMPORTANT: Shutdown sensors BEFORE destructor to join threads cleanly
+    // SensorManager destructor calls Shutdown(), but we need to do it NOW
+    // to ensure sensor event loop threads finish before Cleanup() returns
+    LOGI("Cleanup: Shutting down sensors (joining event loop threads)");
+    sensor_manager_.Shutdown();
+    LOGI("Cleanup: Sensor shutdown complete");
+
+    // Clear sensor controllers (they're already shut down)
     sensor_manager_.ClearControllers();
 
     // Clear GPS provider
     gps_provider_.reset();
 
     // Shutdown ROS executor thread if running
-    if (ros_ && ros_->Initialized())
+    // IMPORTANT: Must wait for executor thread to finish BEFORE returning
+    // to prevent thread-local cleanup crashes when app restarts
+    if (ros_)
     {
-      LOGI("Shutting down ROS interface");
-      // Context shutdown will stop the executor thread
-      if (ros_->get_context() && ros_->get_context()->is_valid())
+      if (ros_->Initialized())
       {
-        try
+        LOGI("Cleanup: Shutting down ROS context");
+        // Context shutdown will stop the executor thread
+        if (ros_->get_context() && ros_->get_context()->is_valid())
         {
-          ros_->get_context()->shutdown("AndroidApp cleanup");
-        }
-        catch (const std::exception &e)
-        {
-          LOGE("Exception during ROS context shutdown: %s", e.what());
+          try
+          {
+            ros_->get_context()->shutdown("AndroidApp cleanup");
+            LOGI("Cleanup: ROS context shutdown complete");
+          }
+          catch (const std::exception &e)
+          {
+            LOGE("Cleanup: Exception during ROS context shutdown: %s", e.what());
+          }
         }
       }
+
+      LOGI("Cleanup: Resetting ROS interface (will join executor thread)");
+      ros_.reset();  // Destructor will join executor_thread_
+      LOGI("Cleanup: ROS interface destroyed");
     }
-    ros_.reset();
+
+    LOGI("Cleaning up AndroidApp - COMPLETE");
   }
 
   // JSON methods removed - using structured data instead (GetSensorList, GetCameraList, GetSensorData)
@@ -547,11 +582,18 @@ extern "C"
   Java_com_github_mowerick_ros2_android_NativeBridge_nativeDestroy(
       JNIEnv * /*env*/, jobject /*thiz*/)
   {
+    LOGI("nativeDestroy called");
     if (g_app)
     {
-      LOGI("nativeDestroy");
+      LOGI("nativeDestroy: g_app exists, calling Cleanup");
       g_app->Cleanup();
+      LOGI("nativeDestroy: Cleanup done, resetting g_app");
       g_app.reset();
+      LOGI("nativeDestroy: g_app reset complete");
+    }
+    else
+    {
+      LOGI("nativeDestroy: g_app was already null");
     }
   }
 
@@ -1052,20 +1094,37 @@ extern "C"
   Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetLidarList(
       JNIEnv *env, jobject /*thiz*/)
   {
+    LOGI("nativeGetLidarList called");
+
     if (!g_app)
     {
+      LOGI("nativeGetLidarList: g_app is null, returning empty array");
       return ros2_android::jni::CreateExternalDeviceInfoArray(env, {});
     }
 
+    LOGI("nativeGetLidarList: g_app exists, lidar_controllers size: %zu", g_app->lidar_controllers_.size());
+
     // Convert lidar controllers to ExternalDeviceInfoData
     std::vector<ros2_android::jni::ExternalDeviceInfoData> devices;
-    for (const auto &controller : g_app->lidar_controllers_)
+    for (size_t i = 0; i < g_app->lidar_controllers_.size(); ++i)
     {
+      LOGI("nativeGetLidarList: Processing controller %zu", i);
+      const auto &controller = g_app->lidar_controllers_[i];
+
+      if (!controller)
+      {
+        LOGE("nativeGetLidarList: Controller %zu is null! Skipping...", i);
+        continue;
+      }
+
+      LOGI("nativeGetLidarList: Controller %zu is valid, getting data...", i);
       ros2_android::jni::ExternalDeviceInfoData data;
       data.uniqueId = controller->GetUniqueId();
+      LOGI("nativeGetLidarList: Got uniqueId: %s", data.uniqueId.c_str());
       data.name = "YDLIDAR";
       data.deviceType = "LIDAR";
       data.usbPath = controller->GetDevicePath();
+      LOGI("nativeGetLidarList: Got device path: %s", data.usbPath.c_str());
       data.vendorId = 0;  // Not tracked
       data.productId = 0; // Not tracked
       data.topicName = controller->TopicName();
@@ -1073,7 +1132,10 @@ extern "C"
       data.connected = true;  // If it's in the list, it's connected
       data.enabled = controller->IsEnabled();
       devices.push_back(data);
+      LOGI("nativeGetLidarList: Controller %zu processed successfully", i);
     }
+
+    LOGI("nativeGetLidarList: All controllers processed, returning %zu devices", devices.size());
 
     return ros2_android::jni::CreateExternalDeviceInfoArray(env, devices);
   }

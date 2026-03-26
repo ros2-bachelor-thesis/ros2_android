@@ -12,7 +12,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -153,24 +152,6 @@ fun LidarDetailScreen(
                             }
                         }
                     }
-                }
-            }
-
-            // Placeholder for scan visualization
-            if (device.enabled) {
-                item {
-                    Text(
-                        text = "Scan Visualization",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-                }
-                item {
-                    Text(
-                        text = "TODO: Add LaserScan visualization here",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
         }

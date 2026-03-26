@@ -1,7 +1,10 @@
 package com.github.mowerick.ros2.android
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -103,6 +106,20 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
         }
     }
 
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent) // Update activity's intent
+
+        // Handle USB device attachment while app is running
+        if (intent?.action == UsbManager.ACTION_USB_DEVICE_ATTACHED) {
+            val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+            android.util.Log.i("MainActivity", "USB device attached while app running: ${device?.deviceName}")
+            device?.let {
+                currentViewModel?.handleUsbDeviceAttached(it)
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -140,6 +157,15 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                 LaunchedEffect(Unit) {
                     currentViewModel = vm
                     vm.loadNetworkInterfaces()
+
+                    // Handle USB device if app was launched by USB intent
+                    if (intent?.action == UsbManager.ACTION_USB_DEVICE_ATTACHED) {
+                        val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+                        android.util.Log.i("MainActivity", "App launched by USB device: ${device?.deviceName}")
+                        device?.let {
+                            vm.handleUsbDeviceAttached(it)
+                        }
+                    }
                 }
 
                 val screen by vm.screen.collectAsState()

@@ -35,9 +35,6 @@ class UsbSerialManager(private val context: Context) {
     companion object {
         private const val TAG = "UsbSerialManager"
         private const val ACTION_USB_PERMISSION = "com.github.mowerick.ros2.android.USB_PERMISSION"
-
-        // Standard YDLIDAR TG15 baud rate
-        const val YDLIDAR_TG15_BAUDRATE = 512000
     }
 
     /**
