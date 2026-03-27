@@ -10,15 +10,15 @@
 namespace ros2_android
 {
 
-  YDLidarDevice::YDLidarDevice(const std::string &tty_path, const std::string &unique_id, int baudrate)
-      : tty_path_(tty_path),
+  YDLidarDevice::YDLidarDevice(const std::string &usb_path, const std::string &unique_id, int baudrate)
+      : usb_path_(usb_path),
         unique_id_(unique_id),
         baudrate_(baudrate),
         is_scanning_(false),
         shutdown_(false),
         lidar_(std::make_unique<CYdLidar>())
   {
-    LOGI("LIDAR device created: id=%s, tty=%s, baudrate=%d", unique_id_.c_str(), tty_path_.c_str(), baudrate_);
+    LOGI("LIDAR device created: id=%s, usb=%s, baudrate=%d", unique_id_.c_str(), usb_path_.c_str(), baudrate_);
   }
 
   YDLidarDevice::~YDLidarDevice()
@@ -28,7 +28,7 @@ namespace ros2_android
 
   bool YDLidarDevice::Initialize()
   {
-    LOGI("Initializing LIDAR: %s at %s", unique_id_.c_str(), tty_path_.c_str());
+    LOGI("Initializing LIDAR: %s at %s", unique_id_.c_str(), usb_path_.c_str());
 
     // Set lidar type (TYPE_TOF for TG series)
     // REQUIRED: Type must be set before connection to instantiate correct driver class
@@ -40,8 +40,8 @@ namespace ros2_android
     int device_type = YDLIDAR_TYPE_SERIAL;
     lidar_->setlidaropt(LidarPropDeviceType, &device_type, sizeof(int));
 
-    // Set TTY serial port path
-    std::string port_path = tty_path_;
+    // Set USB serial port path
+    std::string port_path = usb_path_;
     lidar_->setlidaropt(LidarPropSerialPort, port_path.c_str(), port_path.size());
 
     // TODO: Remove debug logging before production or make it configurable via build flags
@@ -56,7 +56,7 @@ namespace ros2_android
     lidar_->setlidaropt(LidarPropSupportMotorDtrCtrl, &motor_dtr, sizeof(bool));
 
     // Initialize SDK (uses dual-channel by default, auto-detects model, configures sample rate/frequency)
-    LOGI("Initializing YDLIDAR SDK with TTY path: %s", tty_path_.c_str());
+    LOGI("Initializing YDLIDAR SDK with USB path: %s", usb_path_.c_str());
     bool init_result = lidar_->initialize();
 
     if (!init_result)
@@ -68,7 +68,6 @@ namespace ros2_android
     }
 
     LOGI("LIDAR SDK initialized successfully");
-    PostNotification(NotificationSeverity::WARNING, "LIDAR initialized");
     return true;
   }
 
@@ -95,7 +94,7 @@ namespace ros2_android
       read_thread_.join();
     }
 
-    // Disconnect SDK (closes TTY device automatically)
+    // Disconnect SDK (closes USB serial device automatically)
     if (lidar_)
     {
       lidar_->disconnecting();
@@ -126,7 +125,6 @@ namespace ros2_android
     is_scanning_ = true;
     read_thread_ = std::thread(&YDLidarDevice::ReadThread, this);
 
-    PostNotification(NotificationSeverity::WARNING, "LIDAR scanning started");
     LOGI("LIDAR scanning started: %s", unique_id_.c_str());
     return true;
   }

@@ -14,7 +14,7 @@ namespace ros2_android
 {
 
   /**
-   * YDLIDAR device implementation using YDLIDAR SDK (rooted device approach)
+   * YDLIDAR device implementation using YDLIDAR SDK via USB Serial (no root required)
    * Model-agnostic: SDK auto-detects LIDAR model and configures parameters
    *
    * Supports all YDLIDAR models through SDK:
@@ -23,20 +23,20 @@ namespace ros2_android
    * - Other series (GS, T, SDM, etc.)
    *
    * Requirements:
-   * - Rooted Android device
-   * - Root permissions set on TTY device (chmod 666 /dev/ttyUSB0)
-   * - Direct TTY path access (e.g., /dev/ttyUSB0)
+   * - Android USB Host API support
+   * - USB serial driver (CP210x, CH340, FTDI, etc.)
+   * - File descriptor passed via JNI from Java USB Serial library
    */
   class YDLidarDevice : public LidarDevice
   {
   public:
     /**
-     * Create YDLIDAR device with TTY path for rooted devices
-     * @param tty_path TTY device path (e.g., "/dev/ttyUSB0")
+     * Create YDLIDAR device with USB device path
+     * @param usb_path USB device path (e.g., "/dev/bus/usb/001/002")
      * @param unique_id Unique identifier for this device
      * @param baudrate Serial baudrate (e.g., 115200, 230400, 460800, 512000)
      */
-    YDLidarDevice(const std::string &tty_path, const std::string &unique_id, int baudrate);
+    YDLidarDevice(const std::string &usb_path, const std::string &unique_id, int baudrate);
     virtual ~YDLidarDevice();
 
     // LidarDevice interface
@@ -46,7 +46,7 @@ namespace ros2_android
     void StopScanning() override;
     bool IsScanning() const override { return is_scanning_; }
     const std::string &GetUniqueId() const override { return unique_id_; }
-    const std::string &GetDevicePath() const override { return tty_path_; }
+    const std::string &GetDevicePath() const override { return usb_path_; }
 
   private:
     /**
@@ -59,7 +59,7 @@ namespace ros2_android
      */
     void ConvertScan(const void *sdk_scan);
 
-    std::string tty_path_;   // TTY device path (e.g., "/dev/ttyUSB0")
+    std::string usb_path_;   // USB device path (e.g., "/dev/bus/usb/001/002")
     std::string unique_id_;
     int baudrate_;           // Serial baudrate
 

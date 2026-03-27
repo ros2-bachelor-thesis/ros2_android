@@ -582,7 +582,6 @@ class RosViewModel(
                 withContext(Dispatchers.Main) {
                     if (_rosStarted.value) {
                         // ROS is running - navigate to External Sensors screen
-                        addNotification("LIDAR detected: ${matchingDevice.name}", Severity.WARNING)
                         navigateToExternalSensors()
                         refreshExternalDevices()
                     } else {

@@ -23,7 +23,6 @@
 #include "jni/jvm.h"
 #include "lidar/controllers/lidar_controller.h"
 #include "lidar/impl/ydlidar_device.h"
-#include "lidar/tty_device_detector.h"
 #include "ros/ros_interface.h"
 #include <core/serial/serial.h>
 #include "sensors/base/sensor_data_provider.h"
@@ -49,27 +48,31 @@ static jobject g_camera_frame_callback_object = nullptr;
 static jmethodID g_camera_frame_callback_method = nullptr;
 
 // USB Serial JNI bridge state (used by android_jni_serial.cpp)
-namespace ydlidar {
-namespace core {
-namespace serial {
-JavaVM* g_javaVM = nullptr;
-jclass g_usbSerialBridgeClass = nullptr;
-jclass g_bufferedSerialClass = nullptr;
-jmethodID g_openDeviceMethod = nullptr;
-jmethodID g_closeDeviceMethod = nullptr;
-jmethodID g_availableMethod = nullptr;
-jmethodID g_readMethod = nullptr;
-jmethodID g_writeMethod = nullptr;
-jmethodID g_flushMethod = nullptr;
-// list_ports function stub (Android uses UsbSerialManager instead)
-std::vector<PortInfo> list_ports() {
-  // Return empty - USB device discovery handled by UsbSerialManager in Java
-  return std::vector<PortInfo>();
-}
+namespace ydlidar
+{
+  namespace core
+  {
+    namespace serial
+    {
+      JavaVM *g_javaVM = nullptr;
+      jclass g_usbSerialBridgeClass = nullptr;
+      jclass g_bufferedSerialClass = nullptr;
+      jmethodID g_openDeviceMethod = nullptr;
+      jmethodID g_closeDeviceMethod = nullptr;
+      jmethodID g_availableMethod = nullptr;
+      jmethodID g_readMethod = nullptr;
+      jmethodID g_writeMethod = nullptr;
+      jmethodID g_flushMethod = nullptr;
+      // list_ports function stub (Android uses UsbSerialManager instead)
+      std::vector<PortInfo> list_ports()
+      {
+        // Return empty - USB device discovery handled by UsbSerialManager in Java
+        return std::vector<PortInfo>();
+      }
 
-}  // namespace serial
-}  // namespace core
-}  // namespace ydlidar
+    } // namespace serial
+  } // namespace core
+} // namespace ydlidar
 
 class AndroidApp
 {
@@ -172,7 +175,6 @@ public:
     }
   }
 
-
   void Cleanup()
   {
     LOGI("Cleaning up AndroidApp - START");
@@ -247,7 +249,7 @@ public:
       }
 
       LOGI("Cleanup: Resetting ROS interface (will join executor thread)");
-      ros_.reset();  // Destructor will join executor_thread_
+      ros_.reset(); // Destructor will join executor_thread_
       LOGI("Cleanup: ROS interface destroyed");
     }
 
@@ -262,7 +264,7 @@ public:
     std::vector<ros2_android::jni::SensorInfoData> result;
 
     // Get sensor controllers from SensorManager
-    for (const auto& c : sensor_manager_.GetControllers())
+    for (const auto &c : sensor_manager_.GetControllers())
     {
       ros2_android::jni::SensorInfoData data;
       data.uniqueId = c->UniqueId();
@@ -276,7 +278,7 @@ public:
     }
 
     // Add GPS controller
-    for (const auto& gps : gps_controllers_)
+    for (const auto &gps : gps_controllers_)
     {
       ros2_android::jni::SensorInfoData data;
       data.uniqueId = gps->UniqueId();
@@ -295,7 +297,7 @@ public:
   std::vector<ros2_android::jni::CameraInfoData> GetCameraList()
   {
     std::vector<ros2_android::jni::CameraInfoData> result;
-    for (const auto& c : camera_controllers_)
+    for (const auto &c : camera_controllers_)
     {
       ros2_android::jni::CameraInfoData data;
       auto [width, height] = c->GetResolution();
@@ -317,10 +319,10 @@ public:
     return result;
   }
 
-  bool GetSensorData(const std::string& unique_id, ros2_android::jni::SensorReadingData& out_data)
+  bool GetSensorData(const std::string &unique_id, ros2_android::jni::SensorReadingData &out_data)
   {
     // Check sensor managers controllers
-    for (const auto& c : sensor_manager_.GetControllers())
+    for (const auto &c : sensor_manager_.GetControllers())
     {
       if (unique_id == c->UniqueId())
       {
@@ -329,7 +331,7 @@ public:
     }
 
     // Check GPS controllers
-    for (const auto& gps : gps_controllers_)
+    for (const auto &gps : gps_controllers_)
     {
       if (unique_id == gps->UniqueId())
       {
@@ -350,7 +352,7 @@ public:
       return result;
 
     auto topics = node->get_topic_names_and_types();
-    for (const auto& [name, types] : topics)
+    for (const auto &[name, types] : topics)
     {
       result.push_back(name);
     }
@@ -363,7 +365,7 @@ public:
   {
     for (auto &c : camera_controllers_)
     {
-      const auto* ptr = c.get();
+      const auto *ptr = c.get();
       if (unique_id == ptr->UniqueId())
       {
         return c->GetLastFrame(out_data, out_width, out_height);
@@ -376,7 +378,7 @@ public:
   {
     for (auto &c : camera_controllers_)
     {
-      const auto* ptr = c.get();
+      const auto *ptr = c.get();
       if (unique_id == ptr->UniqueId())
       {
         c->EnableCamera();
@@ -389,7 +391,7 @@ public:
   {
     for (auto &c : camera_controllers_)
     {
-      const auto* ptr = c.get();
+      const auto *ptr = c.get();
       if (unique_id == ptr->UniqueId())
       {
         c->DisableCamera();
@@ -434,12 +436,12 @@ public:
 
   // LIDAR device management
 
-  bool ConnectLidar(const std::string& tty_path, const std::string& unique_id, int baudrate)
+  bool ConnectLidar(const std::string &usb_path, const std::string &unique_id, int baudrate)
   {
-    LOGI("ConnectLidar: tty=%s, id=%s, baudrate=%d", tty_path.c_str(), unique_id.c_str(), baudrate);
+    LOGI("ConnectLidar: usb=%s, id=%s, baudrate=%d", usb_path.c_str(), unique_id.c_str(), baudrate);
 
     // Check if already connected
-    for (const auto& controller : lidar_controllers_)
+    for (const auto &controller : lidar_controllers_)
     {
       if (controller->GetUniqueId() == unique_id)
       {
@@ -448,8 +450,8 @@ public:
       }
     }
 
-    // Create YDLidar device with TTY path and baudrate
-    auto device = std::make_unique<ros2_android::YDLidarDevice>(tty_path, unique_id, baudrate);
+    // Create YDLidar device with USB path and baudrate
+    auto device = std::make_unique<ros2_android::YDLidarDevice>(usb_path, unique_id, baudrate);
 
     // Create controller (dereference optional ros_)
     auto controller = std::make_unique<ros2_android::LidarController>(std::move(device), *ros_);
@@ -457,19 +459,16 @@ public:
     lidar_controllers_.push_back(std::move(controller));
     LOGI("LIDAR connected successfully: %s", unique_id.c_str());
 
-    ros2_android::PostNotification(
-        ros2_android::NotificationSeverity::WARNING,
-        "LIDAR device connected");
-
     return true;
   }
 
-  bool DisconnectLidar(const std::string& unique_id)
+  bool DisconnectLidar(const std::string &unique_id)
   {
     LOGI("DisconnectLidar: id=%s", unique_id.c_str());
 
     auto it = std::find_if(lidar_controllers_.begin(), lidar_controllers_.end(),
-                           [&](const std::unique_ptr<ros2_android::LidarController>& controller) {
+                           [&](const std::unique_ptr<ros2_android::LidarController> &controller)
+                           {
                              return controller->GetUniqueId() == unique_id;
                            });
 
@@ -486,11 +485,11 @@ public:
     return false;
   }
 
-  bool EnableLidar(const std::string& unique_id)
+  bool EnableLidar(const std::string &unique_id)
   {
     LOGI("EnableLidar: id=%s", unique_id.c_str());
 
-    for (auto& controller : lidar_controllers_)
+    for (auto &controller : lidar_controllers_)
     {
       if (controller->GetUniqueId() == unique_id)
       {
@@ -504,11 +503,11 @@ public:
     return false;
   }
 
-  bool DisableLidar(const std::string& unique_id)
+  bool DisableLidar(const std::string &unique_id)
   {
     LOGI("DisableLidar: id=%s", unique_id.c_str());
 
-    for (auto& controller : lidar_controllers_)
+    for (auto &controller : lidar_controllers_)
     {
       if (controller->GetUniqueId() == unique_id)
       {
@@ -558,7 +557,7 @@ extern "C"
   JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void * /*reserved*/)
   {
     g_jvm = vm;
-    ydlidar::core::serial::g_javaVM = vm;  // For USB Serial JNI bridge
+    ydlidar::core::serial::g_javaVM = vm; // For USB Serial JNI bridge
     ros2_android::SetJavaVM(vm);
     return JNI_VERSION_1_6;
   }
@@ -649,12 +648,12 @@ extern "C"
     env->ReleaseStringUTFChars(device_id, dev_id);
   }
 
-
   JNIEXPORT jobjectArray JNICALL
   Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetSensorList(
       JNIEnv *env, jobject /*thiz*/)
   {
-    if (!g_app) {
+    if (!g_app)
+    {
       return ros2_android::jni::CreateSensorInfoArray(env, {});
     }
     auto sensors = g_app->GetSensorList();
@@ -683,7 +682,8 @@ extern "C"
   Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetCameraList(
       JNIEnv *env, jobject /*thiz*/)
   {
-    if (!g_app) {
+    if (!g_app)
+    {
       return ros2_android::jni::CreateCameraInfoArray(env, {});
     }
     auto cameras = g_app->GetCameraList();
@@ -742,7 +742,8 @@ extern "C"
   Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetNetworkInterfaces(
       JNIEnv *env, jobject /*thiz*/)
   {
-    if (!g_app) {
+    if (!g_app)
+    {
       return ros2_android::jni::CreateStringArray(env, {});
     }
     return ros2_android::jni::CreateStringArray(env, g_app->network_manager_.GetNetworkInterfaces());
@@ -752,7 +753,8 @@ extern "C"
   Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetDiscoveredTopics(
       JNIEnv *env, jobject /*thiz*/)
   {
-    if (!g_app) {
+    if (!g_app)
+    {
       return ros2_android::jni::CreateStringArray(env, {});
     }
     auto topics = g_app->GetDiscoveredTopics();
@@ -1060,17 +1062,17 @@ extern "C"
   // LIDAR device management
   JNIEXPORT jboolean JNICALL
   Java_com_github_mowerick_ros2_android_NativeBridge_nativeConnectLidar(
-      JNIEnv *env, jobject /*thiz*/, jstring tty_path, jstring unique_id, jint baudrate)
+      JNIEnv *env, jobject /*thiz*/, jstring usb_path, jstring unique_id, jint baudrate)
   {
     if (!g_app)
       return JNI_FALSE;
 
-    const char *path = env->GetStringUTFChars(tty_path, nullptr);
+    const char *path = env->GetStringUTFChars(usb_path, nullptr);
     const char *id = env->GetStringUTFChars(unique_id, nullptr);
 
     bool success = g_app->ConnectLidar(std::string(path), std::string(id), static_cast<int>(baudrate));
 
-    env->ReleaseStringUTFChars(tty_path, path);
+    env->ReleaseStringUTFChars(usb_path, path);
     env->ReleaseStringUTFChars(unique_id, id);
 
     return success ? JNI_TRUE : JNI_FALSE;
@@ -1129,7 +1131,7 @@ extern "C"
       data.productId = 0; // Not tracked
       data.topicName = controller->TopicName();
       data.topicType = controller->TopicType();
-      data.connected = true;  // If it's in the list, it's connected
+      data.connected = true; // If it's in the list, it's connected
       data.enabled = controller->IsEnabled();
       devices.push_back(data);
       LOGI("nativeGetLidarList: Controller %zu processed successfully", i);
@@ -1168,66 +1170,6 @@ extern "C"
     return success ? JNI_TRUE : JNI_FALSE;
   }
 
-  // TTY device detection (rooted device approach)
-  JNIEXPORT jobjectArray JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeDetectTtyDevices(
-      JNIEnv *env, jclass /*clazz*/)
-  {
-    // Detect YDLIDAR TTY devices
-    std::vector<ros2_android::TtyDevice> devices = ros2_android::DetectYDLidarDevices();
-
-    // Convert to ExternalDeviceInfoData for JNI serialization
-    std::vector<ros2_android::jni::ExternalDeviceInfoData> device_data;
-    for (const auto &device : devices)
-    {
-      ros2_android::jni::ExternalDeviceInfoData data;
-
-      // Generate unique ID from TTY path
-      std::string unique_id = "ydlidar_" + device.path;
-      std::replace(unique_id.begin(), unique_id.end(), '/', '_');
-
-      data.uniqueId = unique_id;
-
-      // Determine device name based on VID/PID
-      if (device.vendor_id == 0x10c4 && device.product_id == 0xea60)
-      {
-        data.name = "YDLIDAR (CP210x)";
-      }
-      else if (device.vendor_id == 0x1a86 && device.product_id == 0x7523)
-      {
-        data.name = "YDLIDAR (CH340)";
-      }
-      else
-      {
-        data.name = "YDLIDAR";
-      }
-
-      data.deviceType = "LIDAR";
-      data.usbPath = device.path;  // TTY path (e.g., "/dev/ttyUSB0")
-      data.vendorId = device.vendor_id;
-      data.productId = device.product_id;
-      data.topicName = "/scan";
-      data.topicType = "sensor_msgs/msg/LaserScan";
-      data.connected = false;  // Not connected yet
-      data.enabled = false;
-
-      device_data.push_back(data);
-    }
-
-    return ros2_android::jni::CreateExternalDeviceInfoArray(env, device_data);
-  }
-
-  // Test TTY device accessibility (for diagnostics)
-  JNIEXPORT jboolean JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeCanAccessTty(
-      JNIEnv *env, jclass /*clazz*/, jstring tty_path)
-  {
-    const char *path = env->GetStringUTFChars(tty_path, nullptr);
-    bool accessible = ros2_android::CanAccessTtyDevice(std::string(path));
-    env->ReleaseStringUTFChars(tty_path, path);
-
-    return accessible ? JNI_TRUE : JNI_FALSE;
-  }
 
   // Initialize USB Serial JNI bridge (cache Java class and method IDs)
   JNIEXPORT void JNICALL

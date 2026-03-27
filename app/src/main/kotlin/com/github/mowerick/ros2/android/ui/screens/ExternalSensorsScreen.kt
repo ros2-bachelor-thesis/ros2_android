@@ -46,11 +46,6 @@ fun ExternalSensorsScreen(
                     IconButton(onClick = onBack) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                     }
-                },
-                actions = {
-                    IconButton(onClick = onScanDevices) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Scan for devices")
-                    }
                 }
             )
         }
@@ -102,7 +97,7 @@ fun ExternalSensorsScreen(
                         )
                         Spacer(modifier = Modifier.padding(4.dp))
                         Text(
-                            text = "1. Connect YDLIDAR via USB\n2. Tap the refresh icon above to scan\n3. Requires root access",
+                            text = "1. Connect YDLIDAR via USB\n2. Tap the refresh icon above to scan",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -140,18 +135,6 @@ fun ExternalSensorsScreen(
                     }
                 )
                 Divider()
-            }
-
-            // Empty state
-            if (lidarDevices.isEmpty()) {
-                item {
-                    Text(
-                        text = "No external devices connected",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(16.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             }
         }
     }
