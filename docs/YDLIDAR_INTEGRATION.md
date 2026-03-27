@@ -74,23 +74,39 @@ min_range = 0.05, max_range = 64.0 // TOF range limits (meters)
 
 ### Architecture Overview
 
-Instead of using TTY devices or passing file descriptors, we route all serial I/O through Android's USB Host API using JNI callbacks:
+Instead of using TTY devices or passing file descriptors, we route all serial I/O through Android's USB Host API using JNI callbacks. The implementation follows a layered architecture:
 
 ```
-YDLIDAR SDK (C++)
-    ↓
-android_jni_serial.cpp (custom SerialImpl)
-    ↓ JNI calls
-UsbSerialBridge.kt (static entry point)
-    ↓
-BufferedUsbSerialPort.kt (background reader + circular buffer)
-    ↓
-UsbSerialPort (mik3y/usb-serial-for-android)
-    ↓
-UsbDeviceConnection (Android USB Host API)
-    ↓
-USB Device (YDLIDAR hardware)
+ROS 2 Layer:
+  LidarController (ROS publisher)
+      ↓
+  YDLidarDevice (device impl)
+      ↓
+  YDLIDAR SDK (C++)
+      ↓
+
+Native-Java Bridge:
+  android_jni_serial.cpp (custom SerialImpl)
+      ↓ JNI calls
+  UsbSerialBridge.kt (static entry point)
+      ↓
+
+Android USB Layer:
+  BufferedUsbSerialPort.kt (background reader + circular buffer)
+      ↓
+  UsbSerialPort (mik3y/usb-serial-for-android)
+      ↓
+  UsbDeviceConnection (Android USB Host API)
+      ↓
+  USB Device (YDLIDAR hardware)
 ```
+
+**Key components**:
+- `LidarController` (`src/lidar/controllers/`): Subscribes to scan data, publishes ROS `sensor_msgs/LaserScan`
+- `YDLidarDevice` (`src/lidar/impl/`): Wraps YDLIDAR SDK, manages device lifecycle
+- `android_jni_serial.cpp`: Custom serial backend for YDLIDAR SDK
+- `BufferedUsbSerialPort.kt`: Solves the `available()` problem with background reader thread
+- `UsbSerialManager.kt`: USB device detection and connection management
 
 ### Key Insight: The `available()` Problem
 
@@ -143,13 +159,29 @@ class BufferedUsbSerialPort(private val port: UsbSerialPort, bufferSize: Int = 1
     private val buffer = CircularByteBuffer(bufferSize)
     private val readerThread: Thread
 
+    @Volatile
+    private var stopped = false
+
     init {
         // Start high-priority background thread
         readerThread = Thread({
             val chunk = ByteArray(4096)
             while (!stopped) {
-                val n = port.read(chunk, 100)  // 100ms timeout
-                if (n > 0) buffer.write(chunk, 0, n)
+                try {
+                    val n = port.read(chunk, 100)  // 100ms timeout
+                    if (n > 0) buffer.write(chunk, 0, n)
+                } catch (e: IOException) {
+                    if (!stopped) {
+                        Log.e(TAG, "USB read error: ${e.message}", e)
+                        lastError = e
+
+                        // Exit immediately if connection is closed
+                        if (e.message?.contains("Connection closed") == true) {
+                            Log.w(TAG, "USB connection closed, exiting reader thread")
+                            break
+                        }
+                    }
+                }
             }
         }, "UsbSerialReader-${port.device.deviceName}").apply {
             priority = Thread.MAX_PRIORITY
@@ -162,10 +194,18 @@ class BufferedUsbSerialPort(private val port: UsbSerialPort, bufferSize: Int = 1
     fun read(dest: ByteArray, timeoutMs: Int): Int = buffer.read(dest, 0, dest.size, timeoutMs.toLong())
     fun write(src: ByteArray, timeoutMs: Int) = port.write(src, timeoutMs)
     fun flush(input: Boolean, output: Boolean) { /* clear buffer and/or purge USB */ }
+
+    override fun close() {
+        stopped = true
+        readerThread.join(1000)  // Wait up to 1 second
+        port.close()
+    }
 }
 ```
 
 **Thread priority**: Set to `MAX_PRIORITY` to minimize latency for the 512000 baud communication.
+
+**Error handling**: The reader thread now exits cleanly when the USB connection is closed, preventing exception spam during disconnect/reconnect cycles.
 
 #### UsbSerialBridge.kt
 
@@ -752,6 +792,231 @@ endif()
 
 **Reason**: Enable conditional compilation of Android backend when `ANDROID` is defined by NDK toolchain.
 
+### 5. ROS 2 Integration Layer
+
+The YDLIDAR integration follows the same architecture as built-in sensors:
+
+#### src/lidar/base/lidar_device.h
+
+Base class for all LIDAR devices:
+
+```cpp
+class LidarDevice {
+ public:
+  virtual ~LidarDevice() = default;
+
+  virtual bool Initialize() = 0;
+  virtual void Shutdown() = 0;
+  virtual bool StartScanning() = 0;
+  virtual void StopScanning() = 0;
+
+  virtual std::string GetUniqueId() const = 0;
+  virtual std::string GetDevicePath() const = 0;
+
+  // Event listener for scan data
+  void SetListener(std::function<void(const LaserScanData&)> listener);
+ protected:
+  void Emit(const LaserScanData& scan);
+};
+```
+
+#### src/lidar/impl/ydlidar_device.{h,cc}
+
+YDLIDAR SDK wrapper:
+
+```cpp
+class YDLidarDevice : public LidarDevice {
+ public:
+  YDLidarDevice(const std::string& usb_path, const std::string& unique_id, int baudrate);
+  ~YDLidarDevice() override;
+
+  bool Initialize() override;
+  void Shutdown() override;
+  bool StartScanning() override;
+  void StopScanning() override;
+
+ private:
+  std::unique_ptr<CYdLidar> lidar_;  // YDLIDAR SDK instance
+  std::thread read_thread_;
+  std::atomic<bool> is_scanning_;
+  std::atomic<bool> shutdown_;
+
+  void ReadThread();  // Calls lidar_->doProcessSimple() in loop
+};
+```
+
+**Key responsibilities**:
+- Configures YDLIDAR SDK (lidar type, baudrate, serial port)
+- Manages scan thread lifecycle
+- Converts SDK `LaserScan` format to `LaserScanData`
+- Emits scan events to controller
+
+#### src/lidar/controllers/lidar_controller.{h,cc}
+
+ROS 2 publisher controller:
+
+```cpp
+class LidarController : public SensorDataProvider {
+ public:
+  LidarController(std::unique_ptr<LidarDevice> device, RosInterface& ros);
+  ~LidarController() override;
+
+  void Enable() override;   // Calls device->StartScanning() + scan_pub_.Enable()
+  void Disable() override;  // Calls device->StopScanning() + scan_pub_.Disable()
+
+ private:
+  std::unique_ptr<LidarDevice> device_;
+  RosInterface& ros_;
+  RosPublisher<sensor_msgs::msg::LaserScan> scan_pub_;
+
+  void OnLaserScan(const LaserScanData& scan_data);  // Converts to ROS msg, publishes
+};
+```
+
+**Topic naming**: The controller creates the topic with device ID prefix:
+```cpp
+std::string topic = "/" + ros.GetDeviceId() + "/scan";  // e.g., "/phone123/scan"
+scan_pub_.SetTopic(topic.c_str());
+```
+
+**QoS settings**: Uses BEST_EFFORT for real-time sensor streaming:
+```cpp
+auto qos = rclcpp::QoS(rclcpp::KeepLast(1))
+               .best_effort()
+               .durability_volatile();
+```
+
+### 6. Android UI Layer
+
+The UI provides device management through multiple screens:
+
+#### ExternalSensorsScreen.kt
+
+List view of all external devices:
+
+```kotlin
+@Composable
+fun ExternalSensorsScreen(devices: List<ExternalDeviceInfo>, ...) {
+    LazyColumn {
+        val lidarDevices = devices.filter { it.deviceType == ExternalDeviceType.LIDAR }
+
+        items(lidarDevices) { device ->
+            ListItem(
+                headlineContent = { Text(device.name) },
+                supportingContent = { Text("Topic: ${device.topicName}") },
+                trailingContent = {
+                    Icon(Icons.Filled.ChevronRight, ...)  // Indicates clickable
+                },
+                modifier = Modifier.clickable { onLidarClick(device) }
+            )
+        }
+
+        // Empty state shows supported devices
+        if (lidarDevices.isEmpty()) {
+            Text("Supported: YDLIDAR TG15, TG30, TG50 (CP210x USB-Serial)")
+        }
+    }
+}
+```
+
+#### LidarDetailScreen.kt
+
+Detail view for individual LIDAR configuration:
+
+```kotlin
+@Composable
+fun LidarDetailScreen(device: ExternalDeviceInfo, ...) {
+    LazyColumn {
+        // Connect/Disconnect button (top)
+        Button(onClick = if (device.connected) onDisconnect else onConnect)
+
+        // Enable/Disable publishing button (always visible, disabled when not connected)
+        Button(
+            onClick = if (device.enabled) onDisable else onEnable,
+            enabled = device.connected
+        )
+
+        // Sensor Info card (collapsible)
+        CollapsibleCard(title = "Sensor Info") {
+            Text("USB Path: ${device.usbPath}")
+            Text("Vendor ID: 0x${device.vendorId.toString(16)}")
+            Text("Product ID: 0x${device.productId.toString(16)}")
+        }
+
+        // Topic card (collapsible, only when connected)
+        if (device.connected) {
+            CollapsibleCard(title = "Topic") {
+                Text("Name: ${device.topicName}")  // e.g., "/phone123/scan"
+                Text("Type: ${device.topicType}")  // sensor_msgs/msg/LaserScan
+            }
+        }
+
+        // Baudrate selector (disabled when connected)
+        BaudrateSelector(
+            selected = device.baudrate,
+            options = listOf(115200, 230400, 460800, 512000),
+            enabled = !device.connected,
+            onSelect = onBaudrateChange
+        )
+    }
+}
+```
+
+#### RosViewModel.kt (Device Management)
+
+Manages device state and native layer interaction:
+
+```kotlin
+class RosViewModel(...) : ViewModel() {
+    private val _externalDevices = MutableStateFlow<List<ExternalDeviceInfo>>(emptyList())
+
+    fun connectLidar(uniqueId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val device = usbSerialManager.detectLidarDevices().find { it.uniqueId == uniqueId }
+            val baudrate = _externalDevices.value.find { it.uniqueId == uniqueId }?.baudrate ?: 512000
+
+            val success = NativeBridge.nativeConnectLidar(device.usbPath, uniqueId, baudrate)
+            if (success) refreshExternalDevices()
+        }
+    }
+
+    private fun refreshExternalDevices() {
+        // Get native layer state (connected devices)
+        val nativeDevices = NativeBridge.nativeGetLidarList().toList()
+
+        // Get USB detection state (all available devices)
+        val usbDevices = usbSerialManager.detectLidarDevices()
+
+        // Merge: keep USB data (vendor/product IDs), update ROS state from native
+        val deviceMap = mutableMapOf<String, ExternalDeviceInfo>()
+
+        usbDevices.forEach { usbDevice ->
+            deviceMap[usbDevice.uniqueId] = usbDevice.copy(connected = false, enabled = false)
+        }
+
+        nativeDevices.forEach { nativeDevice ->
+            val usbDevice = deviceMap[nativeDevice.uniqueId]
+            if (usbDevice != null) {
+                deviceMap[nativeDevice.uniqueId] = usbDevice.copy(
+                    connected = nativeDevice.connected,
+                    enabled = nativeDevice.enabled,
+                    topicName = nativeDevice.topicName,  // Includes device ID prefix
+                    topicType = nativeDevice.topicType
+                )
+            } else {
+                deviceMap[nativeDevice.uniqueId] = nativeDevice
+            }
+        }
+
+        _externalDevices.value = deviceMap.values.toList()
+    }
+}
+```
+
+**Why merge two sources**:
+- USB detection: Provides vendor/product IDs, USB path, available (disconnected) devices
+- Native layer: Provides connection state, enabled state, correct topic name with device ID prefix
+
 ### 3. External Declarations for JNI Globals
 
 **Addition to serial.h**:
@@ -801,7 +1066,8 @@ std::vector<PortInfo> list_ports() {
 **Current fork status**:
 - Base version: YDLIDAR SDK 1.2.19
 - Android backend: Custom implementation (300+ lines)
-- Last sync: 2026-03-25
+- Last sync: 2026-03-27
+- Recent changes: Connection error handling, device info management, UI improvements
 
 ---
 
@@ -809,26 +1075,49 @@ std::vector<PortInfo> list_ports() {
 
 ### Native C++ Layer
 
+- **LIDAR base classes**: `src/lidar/base/`
+  - `lidar_device.h` - Abstract device interface
+  - `lidar_descriptor.{cc,h}` - Device metadata
+- **YDLIDAR implementation**: `src/lidar/impl/`
+  - `ydlidar_device.{cc,h}` - YDLIDAR SDK wrapper
+- **ROS controllers**: `src/lidar/controllers/`
+  - `lidar_controller.{cc,h}` - ROS publisher for LaserScan
 - **Android serial backend**: `deps/ydlidar_sdk/core/serial/impl/android/`
   - `android_jni_serial.h` - SerialImpl interface
   - `android_jni_serial.cpp` - JNI-based implementation
   - `CMakeLists.txt` - Build integration
 - **JNI bridge**: `src/jni/jni_bridge.cc`
   - `Java_com_github_mowerick_ros2_android_UsbSerialBridge_nativeInitJNI()` - Initialization function
+  - `Java_com_github_mowerick_ros2_android_NativeBridge_nativeConnectLidar()` - Device connection
+  - `Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetLidarList()` - Device enumeration
   - JNI global variable declarations
 - **YDLIDAR SDK fork**: `deps/ydlidar_sdk/` (git submodule)
 
 ### Java/Kotlin Layer
 
 - **USB Serial bridge**: `app/src/main/kotlin/.../UsbSerialBridge.kt`
+  - JNI entry points for USB Serial operations
+  - Device ID mapping (USB path ↔ uniqueId)
 - **Buffered port wrapper**: `app/src/main/kotlin/.../BufferedUsbSerialPort.kt`
+  - Background reader thread with error handling
+  - Circular buffer interface
 - **Circular buffer**: `app/src/main/kotlin/.../CircularByteBuffer.kt`
+  - Thread-safe ring buffer
+  - Blocking read with timeout
 - **USB device manager**: `app/src/main/kotlin/.../UsbSerialManager.kt`
+  - Device detection (CP210x/CH340)
+  - Connection management with permission handling
+- **UI screens**: `app/src/main/kotlin/.../ui/screens/`
+  - `ExternalSensorsScreen.kt` - Device list with chevron icons
+  - `LidarDetailScreen.kt` - Device configuration with collapsible cards
 - **ROS ViewModel**: `app/src/main/kotlin/.../viewmodel/RosViewModel.kt`
-  - `initializeUsbSerial()` method
+  - `connectLidar()` / `disconnectLidar()` - Device lifecycle
+  - `enableLidar()` / `disableLidar()` - Scanning control
+  - `refreshExternalDevices()` - State synchronization (USB + native layer merge)
+  - `initializeUsbSerial()` - Deferred initialization
 - **MainActivity**: `app/src/main/kotlin/.../MainActivity.kt`
   - JNI initialization sequence
-  - USB intent handling
+  - USB_DEVICE_ATTACHED intent handling
 
 ### Configuration Files
 
@@ -966,6 +1255,10 @@ intensities: [0, 0, 0, ...]  # Not used by TG15
 **Issue**: Motor spins but no data published
 - **Check**: ROS2 system started, network configured
 - **Solution**: Verify domain ID matches, check Wi-Fi multicast
+
+**Issue**: "Connection closed" exception spam when disconnecting
+- **Check**: Logs show repeated IOException
+- **Solution**: Fixed in latest version - reader thread now exits cleanly on connection close
 
 **Issue**: App crashes on USB device attachment
 - **Check**: Logs for SIGSEGV

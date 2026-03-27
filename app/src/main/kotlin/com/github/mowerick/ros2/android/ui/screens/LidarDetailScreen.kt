@@ -28,12 +28,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.github.mowerick.ros2.android.model.ExternalDeviceInfo
-import com.github.mowerick.ros2.android.ui.components.CopyableTextCard
+import com.github.mowerick.ros2.android.ui.components.CollapsibleCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LidarDetailScreen(
     device: ExternalDeviceInfo,
+    isBeingToggled: Boolean,
     onBack: () -> Unit,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
@@ -60,59 +61,95 @@ fun LidarDetailScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Connection status
+            // Connection controls
             item {
-                CopyableTextCard(
-                    label = "Connection Status",
-                    displayText = if (device.connected) "Connected" else "Disconnected"
-                )
-            }
-
-            // Device info
-            item {
-                CopyableTextCard(
-                    label = "USB Path",
-                    displayText = device.usbPath
-                )
-            }
-
-            item {
-                CopyableTextCard(
-                    label = "Vendor ID",
-                    displayText = "0x${device.vendorId.toString(16).uppercase().padStart(4, '0')}"
-                )
-            }
-
-            item {
-                CopyableTextCard(
-                    label = "Product ID",
-                    displayText = "0x${device.productId.toString(16).uppercase().padStart(4, '0')}"
-                )
-            }
-
-            // Topic info (only when connected)
-            if (device.connected) {
-                item {
-                    CopyableTextCard(
-                        label = "Topic Name",
-                        displayText = device.topicName
-                    )
-                }
-
-                item {
-                    CopyableTextCard(
-                        label = "Topic Type",
-                        displayText = device.topicType
-                    )
-                }
-
-                item {
-                    CopyableTextCard(
-                        label = "Publishing Status",
-                        displayText = if (device.enabled) "Enabled" else "Disabled"
-                    )
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (!device.connected) {
+                        Button(
+                            onClick = onConnect,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Connect")
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = onDisconnect,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Disconnect")
+                        }
+                    }
                 }
             }
+
+            // Publishing controls (always visible, disabled when not connected or being toggled)
+            item {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (!device.enabled) {
+                        Button(
+                            onClick = onEnable,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = device.connected && !isBeingToggled
+                        ) {
+                            Text("Publish")
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = onDisable,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = device.connected && !isBeingToggled
+                        ) {
+                            Text("Stop")
+                        }
+                    }
+                }
+            }
+
+            // Sensor info (USB device details)
+            item {
+                CollapsibleCard(
+                    title = "Sensor Info",
+                    initiallyExpanded = true
+                ) {
+                    Text(
+                        text = "USB Path: ${device.usbPath}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "Vendor ID: 0x${device.vendorId.toString(16).uppercase().padStart(4, '0')}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                    Text(
+                        text = "Product ID: 0x${device.productId.toString(16).uppercase().padStart(4, '0')}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+
+                item {
+                    CollapsibleCard(
+                        title = "Topic",
+                        initiallyExpanded = true
+                    ) {
+                        Text(
+                            text = "Name: ${device.topicName}",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = "Type: ${device.topicType}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
 
             // Baudrate selector (always visible, greyed out when connected)
             item {
@@ -166,56 +203,6 @@ fun LidarDetailScreen(
                                         }
                                     )
                                 }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Connection controls
-            item {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (!device.connected) {
-                        Button(
-                            onClick = onConnect,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Connect")
-                        }
-                    } else {
-                        OutlinedButton(
-                            onClick = onDisconnect,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Disconnect")
-                        }
-                    }
-                }
-            }
-
-            // Publishing controls (only when connected)
-            if (device.connected) {
-                item {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (!device.enabled) {
-                            Button(
-                                onClick = onEnable,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Enable Publishing")
-                            }
-                        } else {
-                            OutlinedButton(
-                                onClick = onDisable,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Disable Publishing")
                             }
                         }
                     }

@@ -104,10 +104,18 @@ class UsbSerialManager(private val context: Context) {
     fun connectDevice(uniqueId: String, baudRate: Int = 512000): UsbSerialPort? {
         Log.i(TAG, "Connecting to device: $uniqueId at $baudRate baud")
 
-        // Check if already connected
-        activeConnections[uniqueId]?.let {
-            Log.w(TAG, "Device already connected: $uniqueId")
-            return it
+        // Check if already connected - verify port is still open
+        activeConnections[uniqueId]?.let { existingPort ->
+            try {
+                // Test if port is still open by checking if we can query DTR state
+                existingPort.dtr
+                Log.w(TAG, "Device already connected and open: $uniqueId")
+                return existingPort
+            } catch (e: Exception) {
+                // Port is closed or invalid - remove stale entry and reconnect
+                Log.w(TAG, "Cached port for $uniqueId is closed, removing and reconnecting")
+                activeConnections.remove(uniqueId)
+            }
         }
 
         // Find the USB device
@@ -176,15 +184,20 @@ class UsbSerialManager(private val context: Context) {
      * Disconnect from a USB serial device
      *
      * @param uniqueId Device unique ID
+     * @param closePort If true, close the port; if false, just remove from map (default: true)
      */
-    fun disconnectDevice(uniqueId: String) {
+    fun disconnectDevice(uniqueId: String, closePort: Boolean = true) {
         val port = activeConnections.remove(uniqueId)
         if (port != null) {
-            try {
-                port.close()
-                Log.i(TAG, "Disconnected from device: $uniqueId")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error disconnecting from $uniqueId: ${e.message}", e)
+            if (closePort) {
+                try {
+                    port.close()
+                    Log.i(TAG, "Disconnected from device: $uniqueId")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error disconnecting from $uniqueId: ${e.message}", e)
+                }
+            } else {
+                Log.i(TAG, "Removed device from active connections (without closing): $uniqueId")
             }
         } else {
             Log.w(TAG, "Device not connected: $uniqueId")

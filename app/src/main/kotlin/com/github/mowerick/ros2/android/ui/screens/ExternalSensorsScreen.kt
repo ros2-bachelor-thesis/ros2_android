@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
@@ -71,12 +72,15 @@ fun ExternalSensorsScreen(
                         headlineContent = { Text(device.name) },
                         supportingContent = {
                             Column {
-                                Text("Status: ${if (device.connected) "Connected" else "Disconnected"}")
-                                Text("TTY: ${device.usbPath}")
-                                if (device.connected) {
-                                    Text("Topic: ${device.topicName}")
-                                }
+                                Text("Topic: ${device.topicName}")
                             }
+                        },
+                        trailingContent = {
+                            Icon(
+                                Icons.Filled.ChevronRight,
+                                contentDescription = "View details",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         },
                         modifier = Modifier.clickable { onLidarClick(device) }
                     )
@@ -97,7 +101,7 @@ fun ExternalSensorsScreen(
                         )
                         Spacer(modifier = Modifier.padding(4.dp))
                         Text(
-                            text = "1. Connect YDLIDAR via USB\n2. Tap the refresh icon above to scan",
+                            text = "Supported: YDLIDAR TG15, TG30, TG50 (CP210x USB-Serial)\n\n1. Connect YDLIDAR via USB\n2. Tap the refresh icon above to scan",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

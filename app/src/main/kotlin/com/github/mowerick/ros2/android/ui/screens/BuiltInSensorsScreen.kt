@@ -2,12 +2,16 @@ package com.github.mowerick.ros2.android.ui.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -19,6 +23,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -64,12 +69,30 @@ fun BuiltInSensorsScreen(
                 items(sensors, key = { it.uniqueId }) { sensor ->
                     ListItem(
                         headlineContent = { Text(sensor.prettyName) },
-                        supportingContent = { Text(sensor.topicName) },
+                        supportingContent = {
+                            Column {
+                                Text(
+                                    text = "Topic: ${sensor.topicName}",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        },
                         trailingContent = {
-                            Switch(
-                                checked = sensor.enabled,
-                                onCheckedChange = { onSensorToggle(sensor, it) }
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically // <-- Add this right here
+                            ) {
+                                Switch(
+                                    checked = sensor.enabled,
+                                    onCheckedChange = { onSensorToggle(sensor, it) }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    Icons.Filled.ChevronRight,
+                                    contentDescription = "View details",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         },
                         modifier = Modifier.clickable { onSensorClick(sensor) }
                     )
@@ -89,28 +112,39 @@ fun BuiltInSensorsScreen(
                         headlineContent = { Text(camera.name) },
                         supportingContent = {
                             Column {
+                                Text("Topics:")
                                 Text(
-                                    text = "• ${camera.imageTopicName}",
+                                    text = camera.imageTopicName,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "• ${camera.compressedImageTopicName}",
+                                    text = camera.compressedImageTopicName,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "• ${camera.infoTopicName}",
+                                    text = camera.infoTopicName,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
                         },
                         trailingContent = {
-                            Switch(
-                                checked = camera.enabled,
-                                onCheckedChange = { onCameraToggle(camera, it) }
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically // <-- Add this right here
+                            ) {
+                                Switch(
+                                    checked = camera.enabled,
+                                    onCheckedChange = { onCameraToggle(camera, it) }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    Icons.Filled.ChevronRight,
+                                    contentDescription = "View details",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         },
                         modifier = Modifier.clickable { onCameraClick(camera) }
                     )

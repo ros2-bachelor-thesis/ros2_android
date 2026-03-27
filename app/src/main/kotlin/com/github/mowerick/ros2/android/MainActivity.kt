@@ -261,9 +261,11 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                     )
                     is Screen.LidarDetail -> {
                         val device = externalDevices.find { it.uniqueId == s.deviceId }
+                        val devicesBeingToggled by vm.devicesBeingToggled.collectAsState()
                         if (device != null) {
                             LidarDetailScreen(
                                 device = device,
+                                isBeingToggled = devicesBeingToggled.contains(device.uniqueId),
                                 onBack = { vm.navigateBack() },
                                 onConnect = { vm.connectLidar(device.uniqueId) },
                                 onDisconnect = { vm.disconnectLidar(device.uniqueId) },

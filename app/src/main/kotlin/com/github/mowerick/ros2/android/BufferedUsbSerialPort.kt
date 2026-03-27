@@ -76,7 +76,14 @@ class BufferedUsbSerialPort(
                     if (!stopped) {
                         Log.e(TAG, "USB read error: ${e.message}", e)
                         lastError = e
-                        // Continue reading - USB errors may be transient
+
+                        // Check if connection is closed - if so, exit immediately
+                        if (e.message?.contains("Connection closed") == true) {
+                            Log.w(TAG, "USB connection closed, exiting reader thread")
+                            break
+                        }
+
+                        // Continue reading - other USB errors may be transient
                     }
                 }
             }

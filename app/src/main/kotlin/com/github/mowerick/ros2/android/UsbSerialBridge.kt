@@ -150,6 +150,16 @@ object UsbSerialBridge {
         } else {
             Log.w(TAG, "Device not found in active devices: $uniqueId (path=$deviceId)")
         }
+
+        // Also clean up UsbSerialManager's activeConnections map
+        // BufferedUsbSerialPort.close() already closed the underlying UsbSerialPort,
+        // so we just need to remove the stale reference from UsbSerialManager's map
+        val manager = usbSerialManager
+        if (manager != null) {
+            manager.disconnectDevice(uniqueId, closePort = false)
+        } else {
+            Log.w(TAG, "UsbSerialManager not available to clean up connection for: $uniqueId")
+        }
     }
 
     /**

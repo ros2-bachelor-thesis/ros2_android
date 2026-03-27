@@ -1170,7 +1170,6 @@ extern "C"
     return success ? JNI_TRUE : JNI_FALSE;
   }
 
-
   // Initialize USB Serial JNI bridge (cache Java class and method IDs)
   JNIEXPORT void JNICALL
   Java_com_github_mowerick_ros2_android_UsbSerialBridge_nativeInitJNI(

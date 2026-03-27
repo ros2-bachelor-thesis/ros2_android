@@ -81,6 +81,10 @@ class RosViewModel(
     private val _externalDevices = MutableStateFlow<List<ExternalDeviceInfo>>(emptyList())
     val externalDevices: StateFlow<List<ExternalDeviceInfo>> = _externalDevices
 
+    // Track devices currently being enabled/disabled (to prevent double-clicks)
+    private val _devicesBeingToggled = MutableStateFlow<Set<String>>(emptySet())
+    val devicesBeingToggled: StateFlow<Set<String>> = _devicesBeingToggled
+
     private val _currentReading = MutableStateFlow<SensorReading?>(null)
     val currentReading: StateFlow<SensorReading?> = _currentReading
 
@@ -272,6 +276,7 @@ class RosViewModel(
         _selectedNetworkInterface.value = networkInterface
         _rosStarted.value = true
         refreshSensorsAndCameras()
+        refreshExternalDevices()  // Scan for USB devices
     }
 
     fun resetRos() {
@@ -517,7 +522,6 @@ class RosViewModel(
             val success = NativeBridge.nativeConnectLidar(devicePath, uniqueId, baudrate)
             withContext(Dispatchers.Main) {
                 if (success) {
-                    addNotification("LIDAR connected: ${device.name}", Severity.WARNING)
                     refreshExternalDevices()
                 } else {
                     addNotification("Failed to initialize LIDAR SDK", Severity.ERROR)
@@ -529,7 +533,6 @@ class RosViewModel(
     fun disconnectLidar(uniqueId: String) {
         val success = NativeBridge.nativeDisconnectLidar(uniqueId)
         if (success) {
-            addNotification("LIDAR disconnected", Severity.WARNING)
             refreshExternalDevices()
         } else {
             addNotification("Failed to disconnect LIDAR", Severity.ERROR)
@@ -537,25 +540,55 @@ class RosViewModel(
     }
 
     fun enableLidar(uniqueId: String) {
-        val success = NativeBridge.nativeEnableLidar(uniqueId)
-        if (success) {
-            android.util.Log.i("RosViewModel", "LIDAR publishing enabled: $uniqueId")
-            addNotification("LIDAR publishing enabled", Severity.WARNING)
-            refreshExternalDevices()
-        } else {
-            addNotification("Failed to enable LIDAR publishing", Severity.ERROR)
+        // Prevent double-clicks
+        if (_devicesBeingToggled.value.contains(uniqueId)) {
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            _devicesBeingToggled.value = _devicesBeingToggled.value + uniqueId
+
+            val success = NativeBridge.nativeEnableLidar(uniqueId)
+
+            withContext(Dispatchers.Main) {
+                if (success) {
+                    android.util.Log.i("RosViewModel", "LIDAR publishing enabled: $uniqueId")
+                    refreshExternalDevices()
+                } else {
+                    addNotification("Failed to enable LIDAR publishing", Severity.ERROR)
+                }
+
+                _devicesBeingToggled.value = _devicesBeingToggled.value - uniqueId
+            }
         }
     }
 
     fun disableLidar(uniqueId: String) {
-        val success = NativeBridge.nativeDisableLidar(uniqueId)
-        if (success) {
-            android.util.Log.i("RosViewModel", "LIDAR publishing disabled: $uniqueId")
-            addNotification("LIDAR publishing disabled", Severity.WARNING)
-            refreshExternalDevices()
-        } else {
-            addNotification("Failed to disable LIDAR publishing", Severity.ERROR)
+        // Prevent double-clicks
+        if (_devicesBeingToggled.value.contains(uniqueId)) {
+            return
         }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            _devicesBeingToggled.value = _devicesBeingToggled.value + uniqueId
+
+            val success = NativeBridge.nativeDisableLidar(uniqueId)
+
+            withContext(Dispatchers.Main) {
+                if (success) {
+                    android.util.Log.i("RosViewModel", "LIDAR publishing disabled: $uniqueId")
+                    refreshExternalDevices()
+                } else {
+                    addNotification("Failed to disable LIDAR publishing", Severity.ERROR)
+                }
+
+                _devicesBeingToggled.value = _devicesBeingToggled.value - uniqueId
+            }
+        }
+    }
+
+    fun isDeviceBeingToggled(uniqueId: String): Boolean {
+        return _devicesBeingToggled.value.contains(uniqueId)
     }
 
     /**
@@ -666,10 +699,22 @@ class RosViewModel(
             deviceMap[usbDevice.uniqueId] = usbDevice.copy(connected = false, enabled = false)
         }
 
-        // Then override with native layer state (connected devices)
+        // Then merge native layer state (connected devices) with USB detection data
         nativeDevices.forEach { nativeDevice ->
             android.util.Log.d("RosViewModel", "Connected device: ${nativeDevice.uniqueId}")
-            deviceMap[nativeDevice.uniqueId] = nativeDevice
+            val usbDetectedDevice = deviceMap[nativeDevice.uniqueId]
+            if (usbDetectedDevice != null) {
+                // Merge: keep USB detection data (vendor/product IDs, USB path), update ROS state from native
+                deviceMap[nativeDevice.uniqueId] = usbDetectedDevice.copy(
+                    connected = nativeDevice.connected,
+                    enabled = nativeDevice.enabled,
+                    topicName = nativeDevice.topicName,
+                    topicType = nativeDevice.topicType
+                )
+            } else {
+                // Device not found in USB detection (shouldn't happen, but handle gracefully)
+                deviceMap[nativeDevice.uniqueId] = nativeDevice
+            }
         }
 
         _externalDevices.value = deviceMap.values.toList()
