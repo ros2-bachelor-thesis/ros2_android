@@ -109,8 +109,7 @@ The app publishes the following topics that can be discovered and consumed by ot
 - `/<device_id>/camera/front/camera_info` - `sensor_msgs/CameraInfo` - front camera intrinsics
 - `/<device_id>/camera/rear/camera_info` - `sensor_msgs/CameraInfo` - rear camera intrinsics
 
-> [!NOTE]
-> `<device_id>` is configurable in the app's ROS Setup screen and defaults to the device's sanitized name (e.g., `pixel_7`, `galaxy_s23`). This namespace allows multiple Android devices to publish on the same ROS 2 network without topic collisions.
+> [!NOTE] > `<device_id>` is configurable in the app's ROS Setup screen and defaults to the device's sanitized name (e.g., `pixel_7`, `galaxy_s23`). This namespace allows multiple Android devices to publish on the same ROS 2 network without topic collisions.
 
 All published messages include a `frame_id` field in the header (e.g., `"<device_id>_camera_front"`, `"<device_id>_imu_link"`) and a timestamp indicating when the data was captured. This allows other ROS 2 nodes to transform the data between coordinate frames and temporally synchronize multiple sensors using ROS 2's TF (Transform) system.
 
@@ -209,7 +208,7 @@ keytool -genkey -v -keystore ~/.android/debug.keystore -alias adb_debug_key -key
 ### Clone and Initialize
 
 ```bash
-git clone https://github.com/mowerick/ros2_android.git
+git clone https://github.com/ros2-bachelor-thesis/ros2_android.git
 cd ros2_android
 git submodule init
 git submodule update
