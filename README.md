@@ -371,7 +371,3 @@ For complete testing instructions, including:
 - Troubleshooting common issues
 
 See the **[Testing Guide](scripts/tests/README.md)**.
-
-## Documentation
-
-- [Hybrid Restructuring Notes](docs/hybrid_restructuring_notes.md) - detailed documentation of the NativeActivity to hybrid conversion, including decisions, workarounds, and issues encountered. This app was restructured from [sloretz/sensors_for_ros](https://github.com/sloretz/sensors_for_ros) (Loretz, ROSCon 2022), which was a pure C++ NativeActivity using Dear ImGui for UI.
