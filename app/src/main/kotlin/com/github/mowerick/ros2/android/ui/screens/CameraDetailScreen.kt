@@ -79,25 +79,15 @@ fun CameraDetailScreen(
             }
 
             if (camera.enabled) {
-                val isRotated = camera.sensorOrientation == 90 || camera.sensorOrientation == 270
-                val frameW = if (isRotated) cameraFrame?.height ?: camera.resolutionHeight
-                             else cameraFrame?.width ?: camera.resolutionWidth
-                val frameH = if (isRotated) cameraFrame?.width ?: camera.resolutionWidth
-                             else cameraFrame?.height ?: camera.resolutionHeight
-                val ratio = if (frameW > 0 && frameH > 0) frameW.toFloat() / frameH.toFloat()
-                            else 3f / 4f
-
+                // Bitmap is already rotated to portrait orientation by camera_device.cc
+                // Use actual bitmap dimensions for aspect ratio
                 if (cameraFrame != null) {
                     Image(
                         bitmap = cameraFrame.asImageBitmap(),
                         contentDescription = "Camera preview",
                         modifier = Modifier
                             .fillMaxWidth()
-                            .aspectRatio(ratio)
-                            .graphicsLayer {
-                                rotationZ = camera.sensorOrientation.toFloat()
-                                if (camera.isFrontFacing) scaleY = -1f
-                            },
+                            .aspectRatio(cameraFrame.width.toFloat() / cameraFrame.height.toFloat()),
                         contentScale = ContentScale.Fit
                     )
                 } else {

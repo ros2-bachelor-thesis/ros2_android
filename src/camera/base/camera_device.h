@@ -33,7 +33,7 @@ namespace ros2_android
   {
   public:
     static std::unique_ptr<CameraDevice> OpenCamera(
-        ACameraManager *native_manager, const CameraDescriptor &desc, const std::string& device_id);
+        ACameraManager *native_manager, const CameraDescriptor &desc, const std::string &device_id);
 
     ~CameraDevice();
 
