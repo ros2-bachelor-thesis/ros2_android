@@ -42,6 +42,7 @@ sealed class Screen {
     data object BuiltInSensors : Screen()
     data object ExternalSensors : Screen()
     data object Subsystem : Screen()
+    data object Perception : Screen()
     data class SensorDetail(val sensorId: String) : Screen()
     data class CameraDetail(val cameraId: String) : Screen()
     data class LidarDetail(val deviceId: String) : Screen()
@@ -113,6 +114,18 @@ class RosViewModel(
     private val _isProbing = MutableStateFlow(false)
     val isProbing: StateFlow<Boolean> = _isProbing
 
+    // Perception (Object Detection) state
+    data class PerceptionState(
+        val enabled: Boolean = false,
+        val totalDetections: Int = 0,
+        val activeTrackCount: Int = 0,
+        val queueSize: Int = 0,
+        val modelsLoaded: Boolean = false
+    )
+
+    private val _perceptionState = MutableStateFlow(PerceptionState())
+    val perceptionState: StateFlow<PerceptionState> = _perceptionState
+
     init {
         // Initialize USB Serial manager for LIDAR communication
         UsbSerialBridge.setUsbSerialManager(usbSerialManager)
@@ -121,6 +134,21 @@ class RosViewModel(
         NativeBridge.setNotificationCallback { severity, message ->
             viewModelScope.launch {
                 addNotification(message, if (severity == "ERROR") Severity.ERROR else Severity.WARNING)
+            }
+        }
+
+        // Check if perception models exist
+        viewModelScope.launch(Dispatchers.IO) {
+            val modelsDir = applicationContext.filesDir.resolve("models")
+            val requiredFiles = listOf(
+                "yolov9_s_pobed.ncnn.param",
+                "yolov9_s_pobed.ncnn.bin",
+                "mars-small128.ncnn.param",
+                "mars-small128.ncnn.bin"
+            )
+            val allExist = requiredFiles.all { modelsDir.resolve(it).exists() }
+            withContext(Dispatchers.Main) {
+                _perceptionState.value = _perceptionState.value.copy(modelsLoaded = allExist)
             }
         }
 
@@ -389,6 +417,29 @@ class RosViewModel(
         _screen.value = Screen.Subsystem
     }
 
+    fun navigateToPerception() {
+        _screen.value = Screen.Perception
+        // Start polling perception stats
+        startPerceptionStatsPolling()
+    }
+
+    private fun startPerceptionStatsPolling() {
+        viewModelScope.launch {
+            while (_screen.value == Screen.Perception) {
+                try {
+                    val statsJson = NativeBridge.getPerceptionStats()
+                    // Parse JSON and update state
+                    // For now, just check if perception is enabled
+                    val isEnabled = NativeBridge.isPerceptionEnabled()
+                    _perceptionState.value = _perceptionState.value.copy(enabled = isEnabled)
+                } catch (e: Exception) {
+                    android.util.Log.e("RosViewModel", "Failed to get perception stats", e)
+                }
+                delay(500)  // Poll every 500ms
+            }
+        }
+    }
+
     // -- Sensor/Camera navigation --
 
     fun navigateToSensor(sensor: SensorInfo) {
@@ -439,7 +490,7 @@ class RosViewModel(
                 refreshExternalDevices()
                 _screen.value = Screen.ExternalSensors
             }
-            is Screen.BuiltInSensors, is Screen.ExternalSensors, is Screen.Subsystem, is Screen.RosSetup -> {
+            is Screen.BuiltInSensors, is Screen.ExternalSensors, is Screen.Subsystem, is Screen.Perception, is Screen.RosSetup -> {
                 _screen.value = Screen.Dashboard
             }
             is Screen.NodeDetail -> {
@@ -472,6 +523,48 @@ class RosViewModel(
     fun disableSensor(uniqueId: String) {
         NativeBridge.nativeDisableSensor(uniqueId)
         refreshSensors()
+    }
+
+    // -- Perception enable/disable --
+
+    fun enablePerception() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val modelsPath = "${applicationContext.filesDir.absolutePath}/models"
+                NativeBridge.enablePerception(modelsPath)
+
+                // Update state
+                withContext(Dispatchers.Main) {
+                    _perceptionState.value = _perceptionState.value.copy(
+                        enabled = true,
+                        modelsLoaded = true
+                    )
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("RosViewModel", "Failed to enable perception", e)
+                withContext(Dispatchers.Main) {
+                    addNotification("Failed to enable object detection: ${e.message}", Severity.ERROR)
+                }
+            }
+        }
+    }
+
+    fun disablePerception() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                NativeBridge.disablePerception()
+
+                // Update state
+                withContext(Dispatchers.Main) {
+                    _perceptionState.value = _perceptionState.value.copy(enabled = false)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("RosViewModel", "Failed to disable perception", e)
+                withContext(Dispatchers.Main) {
+                    addNotification("Failed to disable object detection: ${e.message}", Severity.ERROR)
+                }
+            }
+        }
     }
 
     fun onLocationPermissionGranted() {

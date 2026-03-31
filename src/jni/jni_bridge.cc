@@ -23,6 +23,7 @@
 #include "jni/jvm.h"
 #include "lidar/controllers/lidar_controller.h"
 #include "lidar/impl/ydlidar_device.h"
+#include "perception/controllers/perception_controller.h"
 #include "ros/ros_interface.h"
 #include <core/serial/serial.h>
 #include "sensors/base/sensor_data_provider.h"
@@ -211,6 +212,18 @@ public:
     }
     lidar_controllers_.clear();
     LOGI("Cleanup: LIDAR controllers cleared");
+
+    // Clear perception controller
+    if (perception_controller_)
+    {
+      LOGI("Cleanup: Disabling perception controller");
+      if (perception_controller_->IsEnabled())
+      {
+        perception_controller_->Disable();
+      }
+      perception_controller_.reset();
+      LOGI("Cleanup: Perception controller cleared");
+    }
 
     // IMPORTANT: Shutdown sensors BEFORE destructor to join threads cleanly
     // SensorManager destructor calls Shutdown(), but we need to do it NOW
@@ -544,6 +557,9 @@ public:
 
   // LIDAR devices
   std::vector<std::unique_ptr<ros2_android::LidarController>> lidar_controllers_;
+
+  // Perception (ML pipeline)
+  std::unique_ptr<ros2_android::PerceptionController> perception_controller_;
 };
 
 static std::unique_ptr<AndroidApp> g_app;
@@ -1249,6 +1265,91 @@ extern "C"
     }
 
     LOGI("USB Serial JNI bridge initialized successfully");
+  }
+
+  // ============================================================================
+  // Perception (Object Detection) JNI Functions
+  // ============================================================================
+
+  JNIEXPORT void JNICALL
+  Java_com_github_mowerick_ros2_android_NativeBridge_enablePerception(
+      JNIEnv *env, jclass /*clazz*/, jstring models_path)
+  {
+    if (!g_app)
+    {
+      LOGE("enablePerception: g_app is null");
+      return;
+    }
+
+    const char *models_path_c = env->GetStringUTFChars(models_path, nullptr);
+    LOGI("enablePerception: models_path=%s", models_path_c);
+
+    if (!g_app->perception_controller_)
+    {
+      // Create perception controller if it doesn't exist
+      g_app->perception_controller_ = std::make_unique<ros2_android::PerceptionController>(
+          g_app->ros_.value(), std::string(models_path_c));
+
+      if (!g_app->perception_controller_->IsReady())
+      {
+        LOGE("enablePerception: Failed to initialize perception controller");
+        g_app->perception_controller_.reset();
+        env->ReleaseStringUTFChars(models_path, models_path_c);
+        return;
+      }
+    }
+
+    // Enable perception
+    g_app->perception_controller_->Enable();
+    LOGI("enablePerception: Perception enabled");
+
+    env->ReleaseStringUTFChars(models_path, models_path_c);
+  }
+
+  JNIEXPORT void JNICALL
+  Java_com_github_mowerick_ros2_android_NativeBridge_disablePerception(
+      JNIEnv * /*env*/, jclass /*clazz*/)
+  {
+    if (!g_app)
+    {
+      LOGE("disablePerception: g_app is null");
+      return;
+    }
+
+    if (g_app->perception_controller_)
+    {
+      LOGI("disablePerception: Disabling perception");
+      g_app->perception_controller_->Disable();
+    }
+    else
+    {
+      LOGW("disablePerception: perception_controller_ is null");
+    }
+  }
+
+  JNIEXPORT jboolean JNICALL
+  Java_com_github_mowerick_ros2_android_NativeBridge_isPerceptionEnabled(
+      JNIEnv * /*env*/, jclass /*clazz*/)
+  {
+    if (!g_app || !g_app->perception_controller_)
+    {
+      return JNI_FALSE;
+    }
+
+    return g_app->perception_controller_->IsEnabled() ? JNI_TRUE : JNI_FALSE;
+  }
+
+  JNIEXPORT jstring JNICALL
+  Java_com_github_mowerick_ros2_android_NativeBridge_getPerceptionStats(
+      JNIEnv *env, jclass /*clazz*/)
+  {
+    if (!g_app || !g_app->perception_controller_)
+    {
+      return env->NewStringUTF("{\"enabled\":false}");
+    }
+
+    std::string stats = g_app->perception_controller_->GetLastMeasurementJson();
+    return env->NewStringUTF(stats.c_str());
   }
 
 } // extern "C"

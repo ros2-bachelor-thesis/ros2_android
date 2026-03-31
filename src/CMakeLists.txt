@@ -20,6 +20,38 @@ find_library(TURBOJPEG_LIBRARY NAMES turbojpeg turbojpeg-static)
 find_path(YDLIDAR_INCLUDE_DIR CYdLidar.h PATH_SUFFIXES src)
 find_library(YDLIDAR_LIBRARY NAMES ydlidar_sdk libydlidar_sdk)
 
+# Find ros2_android_perception (NCNN ML pipeline - shared lib with bundled deps)
+find_path(PERCEPTION_INCLUDE_DIR perception/object_detection_controller.h)
+find_library(PERCEPTION_LIBRARY ros2_android_perception)
+
+# Perception dependency include paths (for headers only - linking handled by .so)
+set(PERCEPTION_DEPS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../deps/ros2_android_perception/deps")
+set(OPENCV_INCLUDE_DIR "${PERCEPTION_DEPS_ROOT}/opencv-mobile-4.10.0-android/sdk/native/jni/include")
+set(OPENCV_LIB_DIR "${PERCEPTION_DEPS_ROOT}/opencv-mobile-4.10.0-android/sdk/native/staticlibs/arm64-v8a")
+set(NCNN_INCLUDE_DIR "${PERCEPTION_DEPS_ROOT}/ncnn/build-android/install/include")
+set(EIGEN_INCLUDE_DIR "${PERCEPTION_DEPS_ROOT}/eigen")
+
+# Create OpenCV imported targets (needed by perception_controller.cc for cv::imdecode)
+add_library(opencv_core STATIC IMPORTED)
+set_target_properties(opencv_core PROPERTIES
+  IMPORTED_LOCATION "${OPENCV_LIB_DIR}/libopencv_core.a"
+  INTERFACE_INCLUDE_DIRECTORIES "${OPENCV_INCLUDE_DIR}"
+)
+
+add_library(opencv_imgproc STATIC IMPORTED)
+set_target_properties(opencv_imgproc PROPERTIES
+  IMPORTED_LOCATION "${OPENCV_LIB_DIR}/libopencv_imgproc.a"
+  INTERFACE_INCLUDE_DIRECTORIES "${OPENCV_INCLUDE_DIR}"
+  INTERFACE_LINK_LIBRARIES opencv_core
+)
+
+add_library(opencv_highgui STATIC IMPORTED)
+set_target_properties(opencv_highgui PROPERTIES
+  IMPORTED_LOCATION "${OPENCV_LIB_DIR}/libopencv_highgui.a"
+  INTERFACE_INCLUDE_DIRECTORIES "${OPENCV_INCLUDE_DIR}"
+  INTERFACE_LINK_LIBRARIES "opencv_imgproc;opencv_core"
+)
+
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
 add_library(android-ros SHARED
@@ -75,6 +107,9 @@ add_library(android-ros SHARED
 
   # LIDAR controller
   lidar/controllers/lidar_controller.cc
+
+  # Perception controller (NCNN ML pipeline)
+  perception/controllers/perception_controller.cc
 )
 target_link_libraries(android-ros PRIVATE
     android
@@ -87,12 +122,20 @@ target_link_libraries(android-ros PRIVATE
     ${sensor_msgs_TARGETS}
     ${LIBYUV_LIBRARY}
     ${TURBOJPEG_LIBRARY}
-    ${YDLIDAR_LIBRARY})
+    ${YDLIDAR_LIBRARY}
+    ${PERCEPTION_LIBRARY}
+    opencv_highgui
+    opencv_imgproc
+    opencv_core)
 target_include_directories(android-ros PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     ${LIBYUV_INCLUDE_DIR}
     ${TURBOJPEG_INCLUDE_DIR}
-    ${YDLIDAR_INCLUDE_DIR})
+    ${YDLIDAR_INCLUDE_DIR}
+    ${PERCEPTION_INCLUDE_DIR}
+    ${OPENCV_INCLUDE_DIR}
+    ${NCNN_INCLUDE_DIR}
+    ${EIGEN_INCLUDE_DIR})
 # LTO to reduce APK size
 set_property(TARGET android-ros PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 

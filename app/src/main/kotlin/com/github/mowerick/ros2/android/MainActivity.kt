@@ -26,6 +26,7 @@ import com.github.mowerick.ros2.android.ui.screens.DashboardScreen
 import com.github.mowerick.ros2.android.ui.screens.ExternalSensorsScreen
 import com.github.mowerick.ros2.android.ui.screens.LidarDetailScreen
 import com.github.mowerick.ros2.android.ui.screens.NodeDetailScreen
+import com.github.mowerick.ros2.android.ui.screens.PerceptionScreen
 import com.github.mowerick.ros2.android.ui.screens.RosSetupScreen
 import com.github.mowerick.ros2.android.ui.screens.SensorDetailScreen
 import com.github.mowerick.ros2.android.ui.screens.SubsystemScreen
@@ -120,10 +121,52 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
         }
     }
 
+    /**
+     * Copy NCNN model files from assets to internal storage
+     * Models are only copied once (checks if directory exists)
+     */
+    private fun copyModelsToInternalStorage() {
+        val modelsDir = filesDir.resolve("models")
+
+        // Only copy if models directory doesn't exist
+        if (modelsDir.exists()) {
+            android.util.Log.i("MainActivity", "Models already exist at ${modelsDir.absolutePath}")
+            return
+        }
+
+        try {
+            modelsDir.mkdirs()
+            android.util.Log.i("MainActivity", "Copying models to ${modelsDir.absolutePath}")
+
+            val modelFiles = listOf(
+                "yolov9_s_pobed.ncnn.param",
+                "yolov9_s_pobed.ncnn.bin",
+                "mars-small128.ncnn.param",
+                "mars-small128.ncnn.bin"
+            )
+
+            modelFiles.forEach { filename ->
+                assets.open("models/$filename").use { input ->
+                    modelsDir.resolve(filename).outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                android.util.Log.d("MainActivity", "Copied model: $filename")
+            }
+
+            android.util.Log.i("MainActivity", "All models copied successfully")
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Failed to copy models", e)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         NativeBridge.nativeInit(cacheDir.absolutePath, packageName)
+
+        // Copy NCNN models from assets to internal storage (one-time operation)
+        copyModelsToInternalStorage()
 
         // Initialize USB Serial JNI bridge (must be called after nativeInit)
         UsbSerialBridge.nativeInitJNI()
@@ -182,6 +225,7 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                 val isProbing by vm.isProbing.collectAsState()
                 val cameraFrame by vm.cameraFrame.collectAsState()
                 val activeNotifications by vm.notifications.collectAsState()
+                val perceptionState by vm.perceptionState.collectAsState()
 
                 // Handle back button: navigate back if in submenu, exit if on Dashboard
                 BackHandler(enabled = screen != Screen.Dashboard) {
@@ -199,7 +243,8 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                         onSettingsClick = { vm.navigateToRosSetup() },
                         onBuiltInSensorsClick = { vm.navigateToBuiltInSensors() },
                         onExternalSensorsClick = { vm.navigateToExternalSensors() },
-                        onSubsystemClick = { vm.navigateToSubsystem() }
+                        onSubsystemClick = { vm.navigateToSubsystem() },
+                        onPerceptionClick = { vm.navigateToPerception() }
                     )
                     is Screen.RosSetup -> RosSetupScreen(
                         rosStarted = rosStarted,
@@ -287,6 +332,12 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                         isNodeStartable = { vm.isNodeStartable(it) },
                         isProbing = isProbing,
                         onToggleProbing = { vm.toggleTopicProbing() }
+                    )
+                    is Screen.Perception -> PerceptionScreen(
+                        perceptionState = perceptionState,
+                        onBack = { vm.navigateBack() },
+                        onEnable = { vm.enablePerception() },
+                        onDisable = { vm.disablePerception() }
                     )
                     is Screen.NodeDetail -> {
                         val node = pipelineNodes.find { it.id == s.nodeId }

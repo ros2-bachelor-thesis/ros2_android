@@ -52,6 +52,12 @@ object NativeBridge {
     external fun nativeEnableLidar(uniqueId: String): Boolean
     external fun nativeDisableLidar(uniqueId: String): Boolean
 
+    // Perception (Object Detection) management
+    external fun enablePerception(modelsPath: String)
+    external fun disablePerception()
+    external fun isPerceptionEnabled(): Boolean
+    external fun getPerceptionStats(): String
+
     fun setNotificationCallback(callback: (severity: String, message: String) -> Unit) {
         notificationCallback = callback
         nativeSetNotificationCallback()

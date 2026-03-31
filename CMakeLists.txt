@@ -61,6 +61,7 @@ ExternalProject_Add(ros_for_android
   deps-std_msgs
   deps-sensor_msgs
   deps-libyuv
+  deps-ros2_android_perception
   CMAKE_ARGS
   ${android_cmake_args}
   "-DCMAKE_FIND_ROOT_PATH=${CMAKE_CURRENT_BINARY_DIR}/deps"
@@ -101,6 +102,37 @@ stage_lib(deps-cyclonedds "deps/lib/libddsc.so")
 stage_lib(deps-rmw_dds_common "deps/lib/librmw_dds_common.so")
 stage_lib(deps-libyaml_vendor "deps/lib/libyaml.so")
 stage_lib(deps-libyuv "deps/lib/libyuv.so")
+stage_lib(deps-ros2_android_perception "deps/lib/libros2_android_perception.so")
 
 add_custom_target(stage_jniLibs ALL
   DEPENDS ${staged_libs})
+
+# Stage model assets to app/src/main/assets/models/
+set(ASSETS_MODELS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/app/src/main/assets/models")
+file(MAKE_DIRECTORY ${ASSETS_MODELS_DIR})
+
+set(MODEL_FILES
+  yolov9_s_pobed.ncnn.param
+  yolov9_s_pobed.ncnn.bin
+  mars-small128.ncnn.param
+  mars-small128.ncnn.bin
+)
+
+set(staged_models)
+foreach(model_file ${MODEL_FILES})
+  add_custom_command(
+    OUTPUT "${ASSETS_MODELS_DIR}/${model_file}"
+    COMMENT "Staging model ${model_file} -> assets/models/"
+    DEPENDS
+    deps-ros2_android_perception
+    "deps/share/perception/models/${model_file}"
+    COMMAND
+    ${CMAKE_COMMAND} -E copy_if_different
+    "deps/share/perception/models/${model_file}"
+    "${ASSETS_MODELS_DIR}/"
+  )
+  list(APPEND staged_models "${ASSETS_MODELS_DIR}/${model_file}")
+endforeach()
+
+add_custom_target(stage_models ALL
+  DEPENDS ${staged_models})

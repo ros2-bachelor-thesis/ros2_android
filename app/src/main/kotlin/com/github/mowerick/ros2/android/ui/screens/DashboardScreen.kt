@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Cable
+import androidx.compose.material.icons.filled.RemoveRedEye
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
@@ -40,7 +41,8 @@ fun DashboardScreen(
     onSettingsClick: () -> Unit,
     onBuiltInSensorsClick: () -> Unit,
     onExternalSensorsClick: () -> Unit,
-    onSubsystemClick: () -> Unit
+    onSubsystemClick: () -> Unit,
+    onPerceptionClick: () -> Unit
 ) {
     val titleText = if (rosDomainId >= 0) "Dashboard (ID: $rosDomainId)" else "Dashboard (ID: --)"
 
@@ -126,6 +128,16 @@ fun DashboardScreen(
                                else "Start ROS to access subsystem",
                     enabled = rosStarted,
                     onClick = onSubsystemClick
+                )
+            }
+            item {
+                SectionCard(
+                    icon = Icons.Filled.RemoveRedEye,
+                    title = "Object Detection",
+                    subtitle = if (rosStarted) "YOLOv9 + Deep SORT"
+                               else "Start ROS to access perception",
+                    enabled = rosStarted,
+                    onClick = onPerceptionClick
                 )
             }
         }

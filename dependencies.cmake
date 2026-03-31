@@ -52,6 +52,21 @@ macro(build_crosscompile_dependencies)
       -DCMAKE_CXX_FLAGS="-Wno-format-security"
       "-DLINK_LIBS=log")
 
+  # ros2_android_perception - NCNN ML pipeline (YOLOv9 + Deep SORT)
+  # Self-contained: bundles NCNN, OpenCV-mobile, Eigen3
+  ExternalProject_Add(deps-ros2_android_perception
+    DOWNLOAD_COMMAND ""
+    SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/deps/ros2_android_perception"
+    CMAKE_ARGS
+      "-DCMAKE_FIND_ROOT_PATH=${CMAKE_CURRENT_BINARY_DIR}/deps"
+      "-DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/deps"
+      -DBUILD_TESTING=OFF
+      -DBUILD_TEST_BINARY=OFF
+      ${extra_cmake_args}
+      -Dncnn_DIR=${CMAKE_CURRENT_SOURCE_DIR}/deps/ros2_android_perception/deps/ncnn/build-android/build/install/lib/cmake/ncnn
+      -DOpenCV_DIR=${CMAKE_CURRENT_SOURCE_DIR}/deps/ros2_android_perception/deps/opencv-mobile-4.10.0-android/sdk/native/jni
+  )
+
   dep_build(ament_index_python PIP
     SOURCE_DIR "deps/ament_index/ament_index_python"
     DEPENDENCIES )
