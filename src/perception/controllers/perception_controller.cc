@@ -2,6 +2,7 @@
 
 #include <sstream>
 #include <cmath>
+#include <turbojpeg.h>
 
 #include "core/log.h"
 #include "core/notification_queue.h"
@@ -9,6 +10,8 @@
 using ros2_android::PerceptionController;
 using ros2_android::NotificationSeverity;
 using ros2_android::PostNotification;
+using ros2_android::Point3f;
+using ros2_android::Rect;
 
 namespace {
 
@@ -372,19 +375,54 @@ void PerceptionController::InferenceThreadFunc() {
 }
 
 void PerceptionController::ProcessSyncedData(const SyncedData& data) {
-  // Decompress JPEG to cv::Mat
-  cv::Mat rgb_image = cv::imdecode(
-      cv::Mat(1, data.rgb->data.size(), CV_8UC1, (void*)data.rgb->data.data()),
-      cv::IMREAD_COLOR);
-
-  if (rgb_image.empty()) {
-    LOGW("Failed to decode JPEG image");
+  // Decompress JPEG using TurboJPEG
+  tjhandle decompressor = tjInitDecompress();
+  if (!decompressor) {
+    LOGW("Failed to initialize TurboJPEG decompressor");
     return;
   }
 
-  // Run NCNN inference (YOLOv9 + Deep SORT)
+  int width, height, jpegSubsamp, jpegColorspace;
+  int tj_result = tjDecompressHeader3(
+      decompressor,
+      data.rgb->data.data(),
+      data.rgb->data.size(),
+      &width,
+      &height,
+      &jpegSubsamp,
+      &jpegColorspace);
+
+  if (tj_result != 0) {
+    LOGW("Failed to read JPEG header: %s", tjGetErrorStr2(decompressor));
+    tjDestroy(decompressor);
+    return;
+  }
+
+  // Allocate RGB buffer
+  std::vector<uint8_t> rgb_buffer(width * height * 3);
+
+  tj_result = tjDecompress2(
+      decompressor,
+      data.rgb->data.data(),
+      data.rgb->data.size(),
+      rgb_buffer.data(),
+      width,
+      0,  // pitch (0 = use width * pixel_size)
+      height,
+      TJPF_RGB,
+      TJFLAG_FASTDCT);
+
+  tjDestroy(decompressor);
+
+  if (tj_result != 0) {
+    LOGW("Failed to decompress JPEG");
+    return;
+  }
+
+  // Run NCNN inference (YOLOv9 + Deep SORT) with raw RGB buffer
   auto start = std::chrono::high_resolution_clock::now();
-  auto tracks = detector_->ProcessFrame(rgb_image, kConfidenceThreshold, kIouThreshold);
+  auto tracks = detector_->ProcessFrame(
+      rgb_buffer.data(), width, height, kConfidenceThreshold, kIouThreshold);
   auto end = std::chrono::high_resolution_clock::now();
 
   double elapsed_ms = std::chrono::duration<double, std::milli>(end - start).count();
@@ -398,15 +436,15 @@ void PerceptionController::ProcessSyncedData(const SyncedData& data) {
 
   // Process each detected track
   for (const auto& track : tracks) {
-    // Convert bbox to cv::Rect
-    cv::Rect bbox(
+    // Convert bbox to Rect
+    Rect bbox(
         static_cast<int>(track.bbox[0]),
         static_cast<int>(track.bbox[1]),
         static_cast<int>(track.bbox[2] - track.bbox[0]),
         static_cast<int>(track.bbox[3] - track.bbox[1]));
 
     // Get 3D location from point cloud
-    cv::Point3f point3d = Get3DLocation(bbox, *data.cloud);
+    Point3f point3d = Get3DLocation(bbox, *data.cloud);
 
     // Crop point cloud for this detection
     auto cropped_cloud = CropPointCloud(bbox, *data.cloud);
@@ -423,8 +461,8 @@ void PerceptionController::ProcessSyncedData(const SyncedData& data) {
 // 3D Localization
 // ============================================================================
 
-cv::Point3f PerceptionController::Get3DLocation(
-    const cv::Rect& bbox,
+Point3f PerceptionController::Get3DLocation(
+    const Rect& bbox,
     const sensor_msgs::msg::PointCloud2& cloud) {
 
   // Find center of bbox
@@ -445,7 +483,7 @@ cv::Point3f PerceptionController::Get3DLocation(
 
   if (x_offset < 0 || y_offset < 0 || z_offset < 0) {
     LOGW("Point cloud missing x/y/z fields");
-    return cv::Point3f(NAN, NAN, NAN);
+    return Point3f(NAN, NAN, NAN);
   }
 
   // Calculate data index
@@ -453,7 +491,7 @@ cv::Point3f PerceptionController::Get3DLocation(
 
   if (index + z_offset + sizeof(float) > cloud.data.size()) {
     LOGW("Point cloud index out of bounds");
-    return cv::Point3f(NAN, NAN, NAN);
+    return Point3f(NAN, NAN, NAN);
   }
 
   // Extract XYZ (assumes float32)
@@ -464,14 +502,14 @@ cv::Point3f PerceptionController::Get3DLocation(
   // Check for invalid points
   if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
     LOGD("Invalid point at bbox center (%d, %d)", center_x, center_y);
-    return cv::Point3f(NAN, NAN, NAN);
+    return Point3f(NAN, NAN, NAN);
   }
 
-  return cv::Point3f(x, y, z);
+  return Point3f(x, y, z);
 }
 
 sensor_msgs::msg::PointCloud2::UniquePtr PerceptionController::CropPointCloud(
-    const cv::Rect& bbox,
+    const Rect& bbox,
     const sensor_msgs::msg::PointCloud2& cloud) {
 
   auto cropped = std::make_unique<sensor_msgs::msg::PointCloud2>();
@@ -524,7 +562,7 @@ sensor_msgs::msg::PointCloud2::UniquePtr PerceptionController::CropPointCloud(
 
 void PerceptionController::PublishDetection(
     const perception::Track& track,
-    const cv::Point3f& point3d,
+    const Point3f& point3d,
     sensor_msgs::msg::PointCloud2::UniquePtr cropped_cloud,
     const std_msgs::msg::Header& header) {
 
@@ -561,7 +599,7 @@ void PerceptionController::PublishDetection(
 void PerceptionController::LogDetection(
     const builtin_interfaces::msg::Time& stamp,
     const perception::Track& track,
-    const cv::Point3f& point3d) {
+    const Point3f& point3d) {
 
   std::lock_guard<std::mutex> lock(csv_mutex_);
 

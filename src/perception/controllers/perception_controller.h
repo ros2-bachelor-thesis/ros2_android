@@ -11,7 +11,6 @@
 #include <thread>
 #include <vector>
 
-#include <opencv2/opencv.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <geometry_msgs/msg/point.hpp>
@@ -24,6 +23,31 @@
 #include "sensors/base/sensor_data_provider.h"
 
 namespace ros2_android {
+
+/**
+ * Simple 3D point structure (replaces cv::Point3f)
+ */
+struct Point3f {
+  float x;
+  float y;
+  float z;
+
+  Point3f(float x_ = 0.0f, float y_ = 0.0f, float z_ = 0.0f)
+      : x(x_), y(y_), z(z_) {}
+};
+
+/**
+ * Simple rectangle structure (replaces cv::Rect)
+ */
+struct Rect {
+  int x;
+  int y;
+  int width;
+  int height;
+
+  Rect(int x_ = 0, int y_ = 0, int w_ = 0, int h_ = 0)
+      : x(x_), y(y_), width(w_), height(h_) {}
+};
 
 /**
  * PerceptionController - YOLOv9 + Deep SORT object detection and tracking
@@ -202,8 +226,8 @@ class PerceptionController : public SensorDataProvider {
    * @param cloud Point cloud message
    * @return 3D point (x, y, z) or (NaN, NaN, NaN) if invalid
    */
-  cv::Point3f Get3DLocation(const cv::Rect& bbox,
-                            const sensor_msgs::msg::PointCloud2& cloud);
+  Point3f Get3DLocation(const Rect& bbox,
+                        const sensor_msgs::msg::PointCloud2& cloud);
 
   /**
    * Crop point cloud to bbox region
@@ -212,7 +236,7 @@ class PerceptionController : public SensorDataProvider {
    * @return Cropped point cloud (or nullptr if invalid)
    */
   sensor_msgs::msg::PointCloud2::UniquePtr CropPointCloud(
-      const cv::Rect& bbox,
+      const Rect& bbox,
       const sensor_msgs::msg::PointCloud2& cloud);
 
   // ============================================================================
@@ -227,7 +251,7 @@ class PerceptionController : public SensorDataProvider {
    * @param header Message header (for timestamp)
    */
   void PublishDetection(const perception::Track& track,
-                        const cv::Point3f& point3d,
+                        const Point3f& point3d,
                         sensor_msgs::msg::PointCloud2::UniquePtr cropped_cloud,
                         const std_msgs::msg::Header& header);
 
@@ -236,7 +260,7 @@ class PerceptionController : public SensorDataProvider {
    */
   void LogDetection(const builtin_interfaces::msg::Time& stamp,
                     const perception::Track& track,
-                    const cv::Point3f& point3d);
+                    const Point3f& point3d);
 
   /**
    * Initialize CSV log file
