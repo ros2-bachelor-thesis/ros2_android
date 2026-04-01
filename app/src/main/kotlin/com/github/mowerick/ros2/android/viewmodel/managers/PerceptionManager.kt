@@ -1,7 +1,7 @@
 package com.github.mowerick.ros2.android.viewmodel.managers
 
 import android.content.Context
-import com.github.mowerick.ros2.android.NativeBridge
+import com.github.mowerick.ros2.android.util.NativeBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow

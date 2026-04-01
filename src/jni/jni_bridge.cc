@@ -579,7 +579,7 @@ extern "C"
   }
 
   JNIEXPORT void JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeInit(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeInit(
       JNIEnv *env, jobject /*thiz*/, jstring cache_dir, jstring package_name)
   {
     const char *cache_dir_c = env->GetStringUTFChars(cache_dir, nullptr);
@@ -594,7 +594,7 @@ extern "C"
   }
 
   JNIEXPORT void JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeDestroy(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeDestroy(
       JNIEnv * /*env*/, jobject /*thiz*/)
   {
     LOGI("nativeDestroy called");
@@ -613,7 +613,7 @@ extern "C"
   }
 
   JNIEXPORT void JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeSetNetworkInterfaces(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeSetNetworkInterfaces(
       JNIEnv *env, jobject /*thiz*/, jobjectArray interfaces)
   {
     if (!g_app)
@@ -633,7 +633,7 @@ extern "C"
   }
 
   JNIEXPORT void JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeOnPermissionResult(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeOnPermissionResult(
       JNIEnv *env, jobject /*thiz*/, jstring permission, jboolean granted)
   {
     if (!g_app)
@@ -651,7 +651,7 @@ extern "C"
   }
 
   JNIEXPORT void JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeStartRos(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeStartRos(
       JNIEnv *env, jobject /*thiz*/, jint domain_id, jstring network_interface, jstring device_id)
   {
     if (!g_app)
@@ -665,7 +665,7 @@ extern "C"
   }
 
   JNIEXPORT jobjectArray JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetSensorList(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeGetSensorList(
       JNIEnv *env, jobject /*thiz*/)
   {
     if (!g_app)
@@ -677,7 +677,7 @@ extern "C"
   }
 
   JNIEXPORT jobject JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetSensorData(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeGetSensorData(
       JNIEnv *env, jobject /*thiz*/, jstring unique_id)
   {
     if (!g_app)
@@ -695,7 +695,7 @@ extern "C"
   }
 
   JNIEXPORT jobjectArray JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetCameraList(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeGetCameraList(
       JNIEnv *env, jobject /*thiz*/)
   {
     if (!g_app)
@@ -707,7 +707,7 @@ extern "C"
   }
 
   JNIEXPORT void JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeEnableCamera(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeEnableCamera(
       JNIEnv *env, jobject /*thiz*/, jstring unique_id)
   {
     if (!g_app)
@@ -719,7 +719,7 @@ extern "C"
   }
 
   JNIEXPORT void JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeDisableCamera(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeDisableCamera(
       JNIEnv *env, jobject /*thiz*/, jstring unique_id)
   {
     if (!g_app)
@@ -731,7 +731,7 @@ extern "C"
   }
 
   JNIEXPORT void JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeEnableSensor(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeEnableSensor(
       JNIEnv *env, jobject /*thiz*/, jstring unique_id)
   {
     if (!g_app)
@@ -743,7 +743,7 @@ extern "C"
   }
 
   JNIEXPORT void JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeDisableSensor(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeDisableSensor(
       JNIEnv *env, jobject /*thiz*/, jstring unique_id)
   {
     if (!g_app)
@@ -755,7 +755,7 @@ extern "C"
   }
 
   JNIEXPORT jobjectArray JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetNetworkInterfaces(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeGetNetworkInterfaces(
       JNIEnv *env, jobject /*thiz*/)
   {
     if (!g_app)
@@ -766,7 +766,7 @@ extern "C"
   }
 
   JNIEXPORT jobjectArray JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetDiscoveredTopics(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeGetDiscoveredTopics(
       JNIEnv *env, jobject /*thiz*/)
   {
     if (!g_app)
@@ -778,7 +778,7 @@ extern "C"
   }
 
   JNIEXPORT jobject JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetCameraFrame(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeGetCameraFrame(
       JNIEnv *env, jobject /*thiz*/, jstring unique_id)
   {
     if (!g_app)
@@ -798,7 +798,7 @@ extern "C"
   }
 
   JNIEXPORT jstring JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetPendingNotifications(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeGetPendingNotifications(
       JNIEnv *env, jobject /*thiz*/)
   {
     std::vector<ros2_android::Notification> pending;
@@ -837,7 +837,7 @@ extern "C"
   }
 
   JNIEXPORT void JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeSetNotificationCallback(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeSetNotificationCallback(
       JNIEnv *env, jobject thiz)
   {
     std::lock_guard<std::mutex> lock(g_notification_callback_mutex);
@@ -914,7 +914,7 @@ extern "C"
   }
 
   JNIEXPORT void JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeOnGpsLocation(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeOnGpsLocation(
       JNIEnv * /*env*/, jobject /*thiz*/, jdouble latitude, jdouble longitude,
       jdouble altitude, jfloat accuracy, jfloat altitude_accuracy,
       jlong timestamp_ns)
@@ -930,7 +930,7 @@ extern "C"
   }
 
   JNIEXPORT void JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeSetSensorDataCallback(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeSetSensorDataCallback(
       JNIEnv *env, jobject thiz)
   {
     std::lock_guard<std::mutex> lock(g_sensor_data_callback_mutex);
@@ -1003,7 +1003,7 @@ extern "C"
   }
 
   JNIEXPORT void JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeSetCameraFrameCallback(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeSetCameraFrameCallback(
       JNIEnv *env, jobject thiz)
   {
     std::lock_guard<std::mutex> lock(g_camera_frame_callback_mutex);
@@ -1077,7 +1077,7 @@ extern "C"
 
   // LIDAR device management
   JNIEXPORT jboolean JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeConnectLidar(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeConnectLidar(
       JNIEnv *env, jobject /*thiz*/, jstring usb_path, jstring unique_id, jint baudrate)
   {
     if (!g_app)
@@ -1095,7 +1095,7 @@ extern "C"
   }
 
   JNIEXPORT jboolean JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeDisconnectLidar(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeDisconnectLidar(
       JNIEnv *env, jobject /*thiz*/, jstring unique_id)
   {
     if (!g_app)
@@ -1109,7 +1109,7 @@ extern "C"
   }
 
   JNIEXPORT jobjectArray JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeGetLidarList(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeGetLidarList(
       JNIEnv *env, jobject /*thiz*/)
   {
     LOGI("nativeGetLidarList called");
@@ -1159,7 +1159,7 @@ extern "C"
   }
 
   JNIEXPORT jboolean JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeEnableLidar(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeEnableLidar(
       JNIEnv *env, jobject /*thiz*/, jstring unique_id)
   {
     if (!g_app)
@@ -1173,7 +1173,7 @@ extern "C"
   }
 
   JNIEXPORT jboolean JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_nativeDisableLidar(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_nativeDisableLidar(
       JNIEnv *env, jobject /*thiz*/, jstring unique_id)
   {
     if (!g_app)
@@ -1188,14 +1188,14 @@ extern "C"
 
   // Initialize USB Serial JNI bridge (cache Java class and method IDs)
   JNIEXPORT void JNICALL
-  Java_com_github_mowerick_ros2_android_UsbSerialBridge_nativeInitJNI(
+  Java_com_github_mowerick_ros2_android_util_UsbSerialBridge_nativeInitJNI(
       JNIEnv *env, jclass /*clazz*/)
   {
     using namespace ydlidar::core::serial;
     LOGI("Initializing USB Serial JNI bridge");
 
     // Find UsbSerialBridge class
-    jclass localBridgeClass = env->FindClass("com/github/mowerick/ros2/android/UsbSerialBridge");
+    jclass localBridgeClass = env->FindClass("com/github/mowerick/ros2/android/util/UsbSerialBridge");
     if (localBridgeClass == nullptr)
     {
       LOGE("Failed to find UsbSerialBridge class");
@@ -1205,7 +1205,7 @@ extern "C"
     env->DeleteLocalRef(localBridgeClass);
 
     // Find BufferedUsbSerialPort class
-    jclass localPortClass = env->FindClass("com/github/mowerick/ros2/android/BufferedUsbSerialPort");
+    jclass localPortClass = env->FindClass("com/github/mowerick/ros2/android/util/BufferedUsbSerialPort");
     if (localPortClass == nullptr)
     {
       LOGE("Failed to find BufferedUsbSerialPort class");
@@ -1218,7 +1218,7 @@ extern "C"
     g_openDeviceMethod = env->GetStaticMethodID(
         g_usbSerialBridgeClass,
         "openDevice",
-        "(Ljava/lang/String;IIII)Lcom/github/mowerick/ros2/android/BufferedUsbSerialPort;");
+        "(Ljava/lang/String;IIII)Lcom/github/mowerick/ros2/android/util/BufferedUsbSerialPort;");
     if (g_openDeviceMethod == nullptr)
     {
       LOGE("Failed to find UsbSerialBridge.openDevice method");
@@ -1272,7 +1272,7 @@ extern "C"
   // ============================================================================
 
   JNIEXPORT void JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_enablePerception(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_enablePerception(
       JNIEnv *env, jclass /*clazz*/, jstring models_path)
   {
     if (!g_app)
@@ -1307,7 +1307,7 @@ extern "C"
   }
 
   JNIEXPORT void JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_disablePerception(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_disablePerception(
       JNIEnv * /*env*/, jclass /*clazz*/)
   {
     if (!g_app)
@@ -1328,7 +1328,7 @@ extern "C"
   }
 
   JNIEXPORT jboolean JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_isPerceptionEnabled(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_isPerceptionEnabled(
       JNIEnv * /*env*/, jclass /*clazz*/)
   {
     if (!g_app || !g_app->perception_controller_)
@@ -1340,7 +1340,7 @@ extern "C"
   }
 
   JNIEXPORT jstring JNICALL
-  Java_com_github_mowerick_ros2_android_NativeBridge_getPerceptionStats(
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_getPerceptionStats(
       JNIEnv *env, jclass /*clazz*/)
   {
     if (!g_app || !g_app->perception_controller_)

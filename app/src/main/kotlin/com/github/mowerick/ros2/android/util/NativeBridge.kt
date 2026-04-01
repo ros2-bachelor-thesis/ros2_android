@@ -1,4 +1,4 @@
-package com.github.mowerick.ros2.android
+package com.github.mowerick.ros2.android.util
 
 import android.graphics.Bitmap
 import com.github.mowerick.ros2.android.model.CameraInfo

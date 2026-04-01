@@ -1,7 +1,7 @@
 package com.github.mowerick.ros2.android.viewmodel.managers
 
 import android.graphics.Bitmap
-import com.github.mowerick.ros2.android.NativeBridge
+import com.github.mowerick.ros2.android.util.NativeBridge
 import com.github.mowerick.ros2.android.model.CameraInfo
 import com.github.mowerick.ros2.android.model.SensorInfo
 import com.github.mowerick.ros2.android.model.SensorReading

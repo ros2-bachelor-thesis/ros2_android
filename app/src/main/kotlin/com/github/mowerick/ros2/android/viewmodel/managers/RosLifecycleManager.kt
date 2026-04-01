@@ -2,7 +2,7 @@ package com.github.mowerick.ros2.android.viewmodel.managers
 
 import android.content.Context
 import android.net.wifi.WifiManager
-import com.github.mowerick.ros2.android.NativeBridge
+import com.github.mowerick.ros2.android.util.NativeBridge
 import com.github.mowerick.ros2.android.interfaces.NetworkInterfaceProvider
 import com.github.mowerick.ros2.android.util.getDefaultDeviceId
 import com.github.mowerick.ros2.android.util.sanitizeDeviceId

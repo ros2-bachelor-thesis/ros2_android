@@ -4,13 +4,14 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.hardware.usb.UsbDevice
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.github.mowerick.ros2.android.GpsManager
+import com.github.mowerick.ros2.android.viewmodel.managers.GpsManager
 import com.github.mowerick.ros2.android.MainActivity
-import com.github.mowerick.ros2.android.NativeBridge
-import com.github.mowerick.ros2.android.UsbSerialManager
-import com.github.mowerick.ros2.android.UsbSerialBridge
+import com.github.mowerick.ros2.android.util.NativeBridge
+import com.github.mowerick.ros2.android.viewmodel.managers.UsbSerialManager
+import com.github.mowerick.ros2.android.util.UsbSerialBridge
 import com.github.mowerick.ros2.android.interfaces.NetworkInterfaceProvider
 import com.github.mowerick.ros2.android.interfaces.PermissionHandler
 import com.github.mowerick.ros2.android.model.CameraInfo
@@ -21,9 +22,7 @@ import com.github.mowerick.ros2.android.model.PipelineNode
 import com.github.mowerick.ros2.android.model.PipelineState
 import com.github.mowerick.ros2.android.model.SensorInfo
 import com.github.mowerick.ros2.android.model.SensorReading
-import com.github.mowerick.ros2.android.model.SensorType
 import com.github.mowerick.ros2.android.model.Severity
-import com.github.mowerick.ros2.android.util.getDefaultDeviceId
 import com.github.mowerick.ros2.android.viewmodel.managers.ExternalDeviceManager
 import com.github.mowerick.ros2.android.viewmodel.managers.NavigationManager
 import com.github.mowerick.ros2.android.viewmodel.managers.PerceptionManager
@@ -99,7 +98,6 @@ class RosViewModel(
     val externalDevices: StateFlow<List<ExternalDeviceInfo>> = externalDeviceManager.externalDevices
     val devicesBeingToggled: StateFlow<Set<String>> = externalDeviceManager.devicesBeingToggled
     val pipelineNodes: StateFlow<List<PipelineNode>> = pipelineStateMachine.pipelineNodes
-    val pipelineState: StateFlow<PipelineState> = pipelineStateMachine.pipelineState
     val isProbing: StateFlow<Boolean> = pipelineStateMachine.isProbing
     val perceptionState: StateFlow<PerceptionManager.PerceptionState> = perceptionManager.perceptionState
 
@@ -148,14 +146,14 @@ class RosViewModel(
                 // Settings check will be triggered when needed
             },
             onLocationServiceDisabled = {
-                android.util.Log.w("RosViewModel", "Location services disabled outside app")
+                Log.w("RosViewModel", "Location services disabled outside app")
                 isLocationServiceEnabled = false
                 NativeBridge.nativeDisableSensor("gps_location_provider")
                 sensorCameraManager.refreshSensors()
                 refreshCurrentReading()
             },
             onLocationServiceEnabled = {
-                android.util.Log.i("RosViewModel", "Location services re-enabled outside app")
+                Log.i("RosViewModel", "Location services re-enabled outside app")
                 isLocationServiceEnabled = true
                 refreshCurrentReading()
             }
@@ -164,14 +162,14 @@ class RosViewModel(
         // Register GPS enable callback from native
         NativeBridge.setGpsCallbacks(
             onEnable = {
-                android.util.Log.i("RosViewModel", "GPS sensor enabled - ensuring GPS manager is running")
+                Log.i("RosViewModel", "GPS sensor enabled - ensuring GPS manager is running")
                 if (!gpsManager.isRunning()) {
                     val launcher = permissionHandler.getLocationSettingsLauncher()
                     gpsManager.startWithChecks(launcher)
                 }
             },
             onDisable = {
-                android.util.Log.i("RosViewModel", "GPS sensor disabled - publishing stopped")
+                Log.i("RosViewModel", "GPS sensor disabled - publishing stopped")
             }
         )
     }
@@ -248,7 +246,7 @@ class RosViewModel(
     }
 
     fun resetRos() {
-        android.util.Log.i("RosViewModel", "Resetting ROS - restarting app")
+        Log.i("RosViewModel", "Resetting ROS - restarting app")
         rosLifecycleManager.releaseMulticastLock()
         gpsManager.stop()
 
@@ -280,7 +278,6 @@ class RosViewModel(
     fun disconnectLidar(uniqueId: String) = externalDeviceManager.disconnectLidar(uniqueId)
     fun enableLidar(uniqueId: String) = externalDeviceManager.enableLidar(uniqueId)
     fun disableLidar(uniqueId: String) = externalDeviceManager.disableLidar(uniqueId)
-    fun isDeviceBeingToggled(uniqueId: String) = externalDeviceManager.isDeviceBeingToggled(uniqueId)
     fun scanForExternalDevices() = externalDeviceManager.scanForExternalDevices()
 
     fun handleUsbDeviceAttached(device: UsbDevice) {
@@ -291,19 +288,9 @@ class RosViewModel(
         )
     }
 
-    // -- Perception (delegate to PerceptionManager) --
 
-    fun enablePerception() = perceptionManager.enable()
-    fun disablePerception() = perceptionManager.disable()
-
-    // -- Pipeline State Machine (delegate to PipelineStateMachine) --
-
-    fun canStartNodeLocally(nodeId: String) = pipelineStateMachine.canStartNodeLocally(nodeId)
     fun isNodeRunningLocally(nodeId: String) = pipelineStateMachine.isNodeRunningLocally(nodeId)
     fun isNodeDetectedOnNetwork(nodeId: String) = pipelineStateMachine.isNodeDetectedOnNetwork(nodeId)
-    fun getNodeDisplayState(nodeId: String): NodeState = pipelineStateMachine.getNodeDisplayState(nodeId)
-    fun startNode(nodeId: String) = pipelineStateMachine.startNode(nodeId)
-    fun stopNode(nodeId: String) = pipelineStateMachine.stopNode(nodeId)
     fun toggleNodeState(nodeId: String) = pipelineStateMachine.toggleNodeState(nodeId)
     fun isNodeStartable(nodeId: String) = pipelineStateMachine.isNodeStartable(nodeId)
     fun toggleTopicProbing() = pipelineStateMachine.toggleTopicProbing()
@@ -311,7 +298,7 @@ class RosViewModel(
     // -- GPS/Location (stays in ViewModel - tightly coupled) --
 
     fun onLocationPermissionGranted() {
-        android.util.Log.i("RosViewModel", "Location permission granted")
+        Log.i("RosViewModel", "Location permission granted")
         if (rosStarted.value && !gpsManager.isRunning()) {
             val launcher = permissionHandler.getLocationSettingsLauncher()
             gpsManager.startWithChecks(launcher)
@@ -319,18 +306,18 @@ class RosViewModel(
     }
 
     fun onLocationPermissionDenied() {
-        android.util.Log.w("RosViewModel", "Location permission denied by user")
+        Log.w("RosViewModel", "Location permission denied by user")
         addNotification("GPS: Location permission required", Severity.WARNING)
     }
 
     fun onLocationSettingsEnabled() {
-        android.util.Log.i("RosViewModel", "User enabled location settings, restarting GPS")
+        Log.i("RosViewModel", "User enabled location settings, restarting GPS")
         val launcher = permissionHandler.getLocationSettingsLauncher()
         gpsManager.startWithChecks(launcher)
     }
 
     fun onLocationSettingsCancelled() {
-        android.util.Log.w("RosViewModel", "User cancelled location settings dialog")
+        Log.w("RosViewModel", "User cancelled location settings dialog")
         addNotification("GPS: Location services required", Severity.WARNING)
     }
 

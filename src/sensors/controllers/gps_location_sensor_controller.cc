@@ -91,7 +91,7 @@ namespace ros2_android
     }
 
     jclass nativeBridgeClass =
-        env->FindClass("com/github/mowerick/ros2/android/NativeBridge");
+        env->FindClass("com/github/mowerick/ros2/android/util/NativeBridge");
     if (!nativeBridgeClass)
     {
       LOGE("Failed to find NativeBridge class");
@@ -126,7 +126,7 @@ namespace ros2_android
     }
 
     jclass nativeBridgeClass =
-        env->FindClass("com/github/mowerick/ros2/android/NativeBridge");
+        env->FindClass("com/github/mowerick/ros2/android/util/NativeBridge");
     if (!nativeBridgeClass)
     {
       LOGE("Failed to find NativeBridge class");

@@ -1,6 +1,7 @@
-package com.github.mowerick.ros2.android
+package com.github.mowerick.ros2.android.util
 
 import android.util.Log
+import com.github.mowerick.ros2.android.viewmodel.managers.UsbSerialManager
 import java.util.concurrent.ConcurrentHashMap
 
 /**

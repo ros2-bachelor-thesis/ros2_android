@@ -1,7 +1,6 @@
-package com.github.mowerick.ros2.android
+package com.github.mowerick.ros2.android.viewmodel.managers
 
 import android.Manifest
-import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -16,6 +15,7 @@ import android.util.Log
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.IntentSenderRequest
 import androidx.core.app.ActivityCompat
+import com.github.mowerick.ros2.android.util.NativeBridge
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback

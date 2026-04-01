@@ -1,8 +1,7 @@
 package com.github.mowerick.ros2.android.viewmodel.managers
 
 import android.hardware.usb.UsbDevice
-import com.github.mowerick.ros2.android.NativeBridge
-import com.github.mowerick.ros2.android.UsbSerialManager
+import com.github.mowerick.ros2.android.util.NativeBridge
 import com.github.mowerick.ros2.android.model.ExternalDeviceInfo
 import com.github.mowerick.ros2.android.model.ExternalDeviceType
 import kotlinx.coroutines.CoroutineScope

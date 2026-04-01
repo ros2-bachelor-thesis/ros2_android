@@ -26,7 +26,6 @@ import com.github.mowerick.ros2.android.ui.screens.DashboardScreen
 import com.github.mowerick.ros2.android.ui.screens.ExternalSensorsScreen
 import com.github.mowerick.ros2.android.ui.screens.LidarDetailScreen
 import com.github.mowerick.ros2.android.ui.screens.NodeDetailScreen
-import com.github.mowerick.ros2.android.ui.screens.PerceptionScreen
 import com.github.mowerick.ros2.android.ui.screens.PerceptionStats
 import com.github.mowerick.ros2.android.ui.screens.RosSetupScreen
 import com.github.mowerick.ros2.android.ui.screens.SensorDetailScreen
@@ -34,6 +33,8 @@ import com.github.mowerick.ros2.android.ui.screens.SubsystemScreen
 import com.github.mowerick.ros2.android.interfaces.NetworkInterfaceProvider
 import com.github.mowerick.ros2.android.interfaces.PermissionHandler
 import com.github.mowerick.ros2.android.ui.theme.Ros2AndroidTheme
+import com.github.mowerick.ros2.android.util.NativeBridge
+import com.github.mowerick.ros2.android.util.UsbSerialBridge
 import com.github.mowerick.ros2.android.viewmodel.RosViewModel
 import com.github.mowerick.ros2.android.viewmodel.RosViewModelFactory
 import com.github.mowerick.ros2.android.viewmodel.Screen

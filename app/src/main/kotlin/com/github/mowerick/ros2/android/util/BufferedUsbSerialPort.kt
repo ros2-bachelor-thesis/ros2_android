@@ -1,4 +1,4 @@
-package com.github.mowerick.ros2.android
+package com.github.mowerick.ros2.android.util
 
 import android.util.Log
 import com.hoho.android.usbserial.driver.UsbSerialPort

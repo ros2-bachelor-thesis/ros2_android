@@ -1,4 +1,4 @@
-package com.github.mowerick.ros2.android
+package com.github.mowerick.ros2.android.util
 
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
