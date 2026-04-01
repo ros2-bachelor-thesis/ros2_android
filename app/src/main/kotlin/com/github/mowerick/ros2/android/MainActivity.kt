@@ -37,7 +37,9 @@ import com.github.mowerick.ros2.android.ui.theme.Ros2AndroidTheme
 import com.github.mowerick.ros2.android.viewmodel.RosViewModel
 import com.github.mowerick.ros2.android.viewmodel.RosViewModelFactory
 import com.github.mowerick.ros2.android.viewmodel.Screen
+import java.io.File
 import java.net.NetworkInterface
+import java.security.MessageDigest
 
 class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfaceProvider {
 
@@ -124,42 +126,63 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
 
     /**
      * Copy NCNN model files from assets to internal storage
-     * Models are only copied once (checks if directory exists)
+     * Uses hash-based validation to update only changed models
      */
     private fun copyModelsToInternalStorage() {
         val modelsDir = filesDir.resolve("models")
+        modelsDir.mkdirs()
 
-        // Only copy if models directory doesn't exist
-        if (modelsDir.exists()) {
-            android.util.Log.i("MainActivity", "Models already exist at ${modelsDir.absolutePath}")
-            return
-        }
+        val modelFiles = listOf(
+            "yolov9_s_pobed.ncnn.param",
+            "yolov9_s_pobed.ncnn.bin",
+            "mars-small128.ncnn.param",
+            "mars-small128.ncnn.bin"
+        )
 
-        try {
-            modelsDir.mkdirs()
-            android.util.Log.i("MainActivity", "Copying models to ${modelsDir.absolutePath}")
+        android.util.Log.i("MainActivity", "Validating models in ${modelsDir.absolutePath}")
 
-            val modelFiles = listOf(
-                "yolov9_s_pobed.ncnn.param",
-                "yolov9_s_pobed.ncnn.bin",
-                "mars-small128.ncnn.param",
-                "mars-small128.ncnn.bin"
-            )
+        modelFiles.forEach { filename ->
+            try {
+                val assetHash = computeAssetHash("models/$filename")
+                val fileHash = computeFileHash(modelsDir.resolve(filename))
 
-            modelFiles.forEach { filename ->
-                assets.open("models/$filename").use { input ->
-                    modelsDir.resolve(filename).outputStream().use { output ->
-                        input.copyTo(output)
+
+                if (assetHash != fileHash) {
+                    android.util.Log.i("MainActivity", "Updating model: $filename (hash mismatch)")
+                    assets.open("models/$filename").use { input ->
+                        modelsDir.resolve(filename).outputStream().use { output ->
+                            input.copyTo(output)
+                        }
                     }
+                } else {
+                    android.util.Log.d("MainActivity", "Model up-to-date: $filename")
                 }
-                android.util.Log.d("MainActivity", "Copied model: $filename")
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "Failed to update $filename", e)
             }
-
-            android.util.Log.i("MainActivity", "All models copied successfully")
-        } catch (e: Exception) {
-            android.util.Log.e("MainActivity", "Failed to copy models", e)
         }
+
+        android.util.Log.i("MainActivity", "Model validation complete")
     }
+
+    /**
+     * Compute SHA-256 hash of an input stream
+     */
+    private fun computeHash(inputStream: java.io.InputStream): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(8192)
+        var read: Int
+        while (inputStream.read(buffer).also { read = it } != -1) {
+            digest.update(buffer, 0, read)
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private fun computeAssetHash(assetPath: String): String =
+        assets.open(assetPath).use { computeHash(it) }
+
+    private fun computeFileHash(file: File): String =
+        if (!file.exists()) "" else file.inputStream().use { computeHash(it) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
