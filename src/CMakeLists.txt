@@ -109,6 +109,16 @@ target_include_directories(android-ros PUBLIC
     ${PERCEPTION_INCLUDE_DIR}
     ${NCNN_INCLUDE_DIR}
     ${EIGEN_INCLUDE_DIR})
+
+# Define ROS2_ANDROID_DEBUG for Debug/RelWithDebInfo builds
+# This controls LOGD() macro availability in core/log.h
+if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+  target_compile_definitions(android-ros PRIVATE ROS2_ANDROID_DEBUG=1)
+  message(STATUS "ROS2_ANDROID_DEBUG enabled (BUILD_TYPE=${CMAKE_BUILD_TYPE})")
+else()
+  message(STATUS "ROS2_ANDROID_DEBUG disabled (BUILD_TYPE=${CMAKE_BUILD_TYPE})")
+endif()
+
 # LTO to reduce APK size
 set_property(TARGET android-ros PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 

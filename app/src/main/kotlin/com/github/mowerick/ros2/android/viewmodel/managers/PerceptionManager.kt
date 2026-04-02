@@ -36,8 +36,8 @@ class PerceptionManager(
             val requiredFiles = listOf(
                 "yolov9_s_pobed.ncnn.param",
                 "yolov9_s_pobed.ncnn.bin",
-                "mars-small128.ncnn.param",
-                "mars-small128.ncnn.bin"
+                "osnet_ain_x1_0.ncnn.param",
+                "osnet_ain_x1_0.ncnn.bin"
             )
             val allExist = requiredFiles.all { modelsDir.resolve(it).exists() }
             withContext(Dispatchers.Main) {

@@ -60,6 +60,7 @@ macro(build_crosscompile_dependencies)
     CMAKE_ARGS
       "-DCMAKE_FIND_ROOT_PATH=${CMAKE_CURRENT_BINARY_DIR}/deps"
       "-DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/deps"
+      -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
       -DBUILD_TESTING=OFF
       -DBUILD_TEST_BINARY=OFF
       ${extra_cmake_args}

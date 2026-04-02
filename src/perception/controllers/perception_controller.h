@@ -98,26 +98,16 @@ class PerceptionController : public SensorDataProvider {
 
  private:
   // ============================================================================
-  // Message synchronization structures
+  // Latest message storage (matches Python reference approach)
   // ============================================================================
 
   /**
-   * Synchronized data from all 3 ZED topics
+   * Latest messages from ZED topics (no timestamp synchronization)
    */
-  struct SyncedData {
-    sensor_msgs::msg::CompressedImage::SharedPtr rgb;
-    sensor_msgs::msg::Image::SharedPtr depth;
-    sensor_msgs::msg::PointCloud2::SharedPtr cloud;
-    rclcpp::Time timestamp;
-
-    bool IsComplete() const { return rgb && depth && cloud; }
-  };
-
-  /**
-   * Synchronized message buffer for approximate time matching
-   */
-  std::map<rclcpp::Time, SyncedData> sync_buffer_;
-  std::mutex sync_mutex_;
+  sensor_msgs::msg::CompressedImage::SharedPtr latest_rgb_;
+  sensor_msgs::msg::Image::SharedPtr latest_depth_;
+  sensor_msgs::msg::PointCloud2::SharedPtr latest_cloud_;
+  std::mutex latest_mutex_;
 
   // ============================================================================
   // ROS infrastructure
@@ -152,9 +142,6 @@ class PerceptionController : public SensorDataProvider {
 
   std::thread inference_thread_;
   std::atomic<bool> running_{false};
-  std::queue<SyncedData> data_queue_;
-  std::mutex queue_mutex_;
-  std::condition_variable queue_cv_;
 
   // Statistics
   std::atomic<size_t> total_detections_{0};
@@ -187,34 +174,17 @@ class PerceptionController : public SensorDataProvider {
   void OnPointCloud(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
 
   // ============================================================================
-  // Message synchronization
-  // ============================================================================
-
-  /**
-   * Attempt to synchronize messages within time window
-   * Called after each topic callback
-   */
-  void TrySynchronize();
-
-  /**
-   * Clean old messages from sync buffer (>500ms)
-   */
-  void CleanOldMessages();
-
-  // ============================================================================
   // Inference thread
   // ============================================================================
 
   /**
-   * Inference thread main loop
-   * Processes synchronized data from queue
+   * Process one frame (RGB + depth + point cloud)
+   * Called from OnRGB when all 3 messages are available
    */
-  void InferenceThreadFunc();
-
-  /**
-   * Process one synchronized data frame
-   */
-  void ProcessSyncedData(const SyncedData& data);
+  void ProcessFrame(
+      const sensor_msgs::msg::CompressedImage::SharedPtr& rgb,
+      const sensor_msgs::msg::Image::SharedPtr& depth,
+      const sensor_msgs::msg::PointCloud2::SharedPtr& cloud);
 
   // ============================================================================
   // 3D localization

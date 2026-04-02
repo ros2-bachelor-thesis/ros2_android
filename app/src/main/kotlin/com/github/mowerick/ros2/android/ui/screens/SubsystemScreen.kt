@@ -65,10 +65,7 @@ fun SubsystemScreen(
                 )
 
                 if (index < nodes.lastIndex) {
-                    val publishedTopic = node.publishesTo.firstOrNull()?.name ?: ""
-                    if (publishedTopic.isNotEmpty()) {
-                        TopicConnector(topicName = publishedTopic)
-                    }
+                        TopicConnector()
                 }
             }
         }

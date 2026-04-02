@@ -18,7 +18,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun TopicConnector(topicName: String) {
+fun TopicConnector() {
     val lineColor = MaterialTheme.colorScheme.outline
 
     Column(
@@ -39,13 +39,6 @@ fun TopicConnector(topicName: String) {
                 strokeWidth = 2.dp.toPx()
             )
         }
-
-        Text(
-            text = topicName,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
         Icon(
             Icons.Filled.ArrowDownward,
             contentDescription = "flows to",

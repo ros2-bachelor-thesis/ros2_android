@@ -319,8 +319,8 @@ The object detection perception system requires NCNN model files that are not in
 
 - `yolov9_s_pobed.ncnn.param` (70 KB) - YOLOv9-s detection model parameters
 - `yolov9_s_pobed.ncnn.bin` (19 MB) - YOLOv9-s detection model weights
-- `mars-small128.ncnn.param` (9.2 KB) - MARS ReID model parameters for tracking
-- `mars-small128.ncnn.bin` (5.4 MB) - MARS ReID model weights for tracking
+- `osnet_ain_x1_0.ncnn.param` (9.2 KB) - MARS ReID model parameters for tracking
+- `osnet_ain_x1_0.ncnn.bin` (5.4 MB) - MARS ReID model weights for tracking
 
 **Model specifications:**
 
