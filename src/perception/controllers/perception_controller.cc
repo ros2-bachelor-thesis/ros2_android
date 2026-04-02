@@ -67,12 +67,12 @@ PerceptionController::PerceptionController(RosInterface &ros,
   // Configure publishers with device namespace
   std::string device_prefix = "/" + ros_.GetDeviceId() + "/";
 
-  pub_beetle_center_.SetTopic((device_prefix + "cpb_beetle_center").c_str());
-  pub_beetle_.SetTopic((device_prefix + "cpb_beetle").c_str());
-  pub_larva_center_.SetTopic((device_prefix + "cpb_larva_center").c_str());
-  pub_larva_.SetTopic((device_prefix + "cpb_larva").c_str());
-  pub_eggs_center_.SetTopic((device_prefix + "cpb_eggs_center").c_str());
-  pub_eggs_.SetTopic((device_prefix + "cpb_eggs").c_str());
+  pub_beetle_center_.SetTopic("cpb_beetle_center");
+  pub_beetle_.SetTopic("cpb_beetle");
+  pub_larva_center_.SetTopic("cpb_larva_center");
+  pub_larva_.SetTopic("cpb_larva");
+  pub_eggs_center_.SetTopic("cpb_eggs_center");
+  pub_eggs_.SetTopic("cpb_eggs");
 
   // Use QoS(10) reliable matching Python reference
   auto qos = rclcpp::QoS(10).reliable();
@@ -182,9 +182,6 @@ void PerceptionController::Enable()
   pub_eggs_center_.Enable();
   pub_eggs_.Enable();
 
-  // Initialize CSV logging
-  InitializeCSV();
-
   enabled_ = true;
 
   LOGI("PerceptionController enabled - processing on RGB callback");
@@ -219,9 +216,6 @@ void PerceptionController::Disable()
   pub_larva_.Disable();
   pub_eggs_center_.Disable();
   pub_eggs_.Disable();
-
-  // Close CSV
-  CloseCSV();
 
   enabled_ = false;
 
@@ -382,9 +376,6 @@ void PerceptionController::ProcessFrame(
 
     // Publish results
     PublishDetection(track, point3d, std::move(cropped_cloud), rgb->header);
-
-    // Log to CSV
-    LogDetection(rgb->header.stamp, track, point3d);
   }
 }
 
@@ -550,72 +541,5 @@ void PerceptionController::PublishDetection(
     {
       pub_eggs_.Publish(std::move(cropped_cloud));
     }
-  }
-}
-
-void PerceptionController::LogDetection(
-    const builtin_interfaces::msg::Time &stamp,
-    const perception::Track &track,
-    const Point3f &point3d)
-{
-
-  std::lock_guard<std::mutex> lock(csv_mutex_);
-
-  if (!csv_file_.is_open())
-  {
-    return;
-  }
-
-  csv_file_ << stamp.sec << "." << stamp.nanosec << ","
-            << track.track_id << ","
-            << static_cast<int>(track.class_id) << ","
-            << track.bbox[0] << ","
-            << track.bbox[1] << ","
-            << track.bbox[2] << ","
-            << track.bbox[3] << ","
-            << point3d.x << ","
-            << point3d.y << ","
-            << point3d.z << "\n";
-  csv_file_.flush();
-}
-
-// ============================================================================
-// CSV Management
-// ============================================================================
-
-void PerceptionController::InitializeCSV()
-{
-  std::lock_guard<std::mutex> lock(csv_mutex_);
-
-  // Log to Android Download directory (user-accessible)
-  std::string path = "/storage/emulated/0/Download/perception_log.csv";
-
-  csv_file_.open(path, std::ios::app);
-  if (!csv_file_.is_open())
-  {
-    LOGW("Failed to open CSV log file: %s", path.c_str());
-    return;
-  }
-
-  // Write header if file is empty (new file)
-  csv_file_.seekp(0, std::ios::end);
-  if (csv_file_.tellp() == 0)
-  {
-    csv_file_ << "timestamp,track_id,class_id,confidence,"
-              << "bbox_x1,bbox_y1,bbox_x2,bbox_y2,"
-              << "pos_x,pos_y,pos_z\n";
-  }
-
-  LOGI("CSV logging enabled: %s", path.c_str());
-}
-
-void PerceptionController::CloseCSV()
-{
-  std::lock_guard<std::mutex> lock(csv_mutex_);
-
-  if (csv_file_.is_open())
-  {
-    csv_file_.close();
-    LOGI("CSV logging closed");
   }
 }

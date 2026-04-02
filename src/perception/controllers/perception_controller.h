@@ -2,7 +2,6 @@
 
 #include <atomic>
 #include <condition_variable>
-#include <fstream>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -58,7 +57,6 @@ struct Rect {
  * - Dedicated inference thread for NCNN processing
  * - 3D localization using point cloud lookup
  * - Publishes 6 topics (3 classes × 2 message types: Point + PointCloud2)
- * - CSV logging for validation against Python reference
  *
  * Classes detected:
  * - 0: cpb_beetle (Colorado Potato Beetle adult)
@@ -148,13 +146,6 @@ class PerceptionController : public SensorDataProvider {
   std::atomic<size_t> active_tracks_{0};
 
   // ============================================================================
-  // CSV logging for validation
-  // ============================================================================
-
-  std::ofstream csv_file_;
-  std::mutex csv_mutex_;
-
-  // ============================================================================
   // Callback handlers
   // ============================================================================
 
@@ -224,23 +215,6 @@ class PerceptionController : public SensorDataProvider {
                         const Point3f& point3d,
                         sensor_msgs::msg::PointCloud2::UniquePtr cropped_cloud,
                         const std_msgs::msg::Header& header);
-
-  /**
-   * Log detection to CSV file for validation
-   */
-  void LogDetection(const builtin_interfaces::msg::Time& stamp,
-                    const perception::Track& track,
-                    const Point3f& point3d);
-
-  /**
-   * Initialize CSV log file
-   */
-  void InitializeCSV();
-
-  /**
-   * Close CSV log file
-   */
-  void CloseCSV();
 };
 
 }  // namespace ros2_android
