@@ -2,6 +2,7 @@ package com.github.mowerick.ros2.android
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
@@ -24,6 +25,7 @@ import com.github.mowerick.ros2.android.ui.screens.BuiltInSensorsScreen
 import com.github.mowerick.ros2.android.ui.screens.CameraDetailScreen
 import com.github.mowerick.ros2.android.ui.screens.DashboardScreen
 import com.github.mowerick.ros2.android.ui.screens.ExternalSensorsScreen
+import com.github.mowerick.ros2.android.ui.screens.FullscreenDebugVisualizationScreen
 import com.github.mowerick.ros2.android.ui.screens.LidarDetailScreen
 import com.github.mowerick.ros2.android.ui.screens.NodeDetailScreen
 import com.github.mowerick.ros2.android.ui.screens.RosSetupScreen
@@ -253,8 +255,21 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                 val debugFrameRgb by vm.debugFrameRgb.collectAsState()
                 val debugFrameDepth by vm.debugFrameDepth.collectAsState()
 
+                // Handle orientation changes based on screen
+                LaunchedEffect(screen) {
+                    requestedOrientation = when (screen) {
+                        is Screen.DebugVisualizationFullscreen -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                        else -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    }
+                }
+
                 // Handle back button: navigate back if in submenu, exit if on Dashboard
                 BackHandler(enabled = screen != Screen.Dashboard) {
+                    vm.navigateBack()
+                }
+
+                // Also handle back button for fullscreen (ensures exit from fullscreen)
+                BackHandler(enabled = screen == Screen.DebugVisualizationFullscreen) {
                     vm.navigateBack()
                 }
 
@@ -374,9 +389,17 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                                 debugFrameRgb = debugFrameRgb,
                                 debugFrameDepth = debugFrameDepth,
                                 onEnableVisualization = { vm.enableVisualization() },
-                                onDisableVisualization = { vm.disableVisualization() }
+                                onDisableVisualization = { vm.disableVisualization() },
+                                onFullscreenClick = { vm.navigateToDebugFullscreen() }
                             )
                         }
+                    }
+                    is Screen.DebugVisualizationFullscreen -> {
+                        FullscreenDebugVisualizationScreen(
+                            debugFrameRgb = debugFrameRgb,
+                            debugFrameDepth = debugFrameDepth,
+                            onBack = { vm.navigateBack() }
+                        )
                     }
                 }
                 NotificationOverlay(

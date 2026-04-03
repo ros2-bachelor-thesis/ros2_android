@@ -54,6 +54,10 @@ class NavigationManager(initialScreen: Screen = Screen.Dashboard) {
         navigateTo(Screen.NodeDetail(node.id))
     }
 
+    fun navigateToDebugFullscreen() {
+        navigateTo(Screen.DebugVisualizationFullscreen)
+    }
+
     fun navigateBack() {
         if (navigationStack.size > 1) {
             navigationStack.removeLast()

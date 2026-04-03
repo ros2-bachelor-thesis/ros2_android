@@ -54,7 +54,8 @@ fun NodeDetailScreen(
     debugFrameRgb: Bitmap? = null,
     debugFrameDepth: Bitmap? = null,
     onEnableVisualization: () -> Unit = {},
-    onDisableVisualization: () -> Unit = {}
+    onDisableVisualization: () -> Unit = {},
+    onFullscreenClick: () -> Unit = {}
 ) {
     Scaffold(
         topBar = {
@@ -196,6 +197,12 @@ fun NodeDetailScreen(
                                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                                 ) {
                                     Text("Disable Visualization")
+                                }
+                                Button(
+                                    onClick = onFullscreenClick,
+                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                                ) {
+                                    Text("Fullscreen")
                                 }
                             } else {
                                 Button(

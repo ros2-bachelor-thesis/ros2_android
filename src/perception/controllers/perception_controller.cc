@@ -63,9 +63,10 @@ PerceptionController::PerceptionController(RosInterface &ros,
   std::string reid_param = models_path + "/osnet_ain_x1_0.ncnn.param";
   std::string reid_bin = models_path + "/osnet_ain_x1_0.ncnn.bin";
 
-  // Initialize NCNN detector (use_vulkan = false, CPU NEON faster on ARM)
+  // Initialize NCNN detector with Vulkan auto-detection
+  // Will automatically fall back to CPU if Vulkan is not available
   detector_ = std::make_unique<perception::ObjectDetectionController>(
-      yolo_param, yolo_bin, reid_param, reid_bin, false);
+      yolo_param, yolo_bin, reid_param, reid_bin, true);
 
   if (!detector_->IsReady())
   {

@@ -46,6 +46,7 @@ sealed class Screen {
     data class LidarDetail(val deviceId: String) : Screen()
     data class UsbCameraDetail(val deviceId: String) : Screen()
     data class NodeDetail(val nodeId: String) : Screen()
+    data object DebugVisualizationFullscreen : Screen()
 }
 
 class RosViewModel(
@@ -228,6 +229,7 @@ class RosViewModel(
     fun navigateToCamera(camera: CameraInfo) = navigationManager.navigateToCamera(camera)
     fun navigateToLidar(device: ExternalDeviceInfo) = navigationManager.navigateToLidar(device)
     fun navigateToNode(node: PipelineNode) = navigationManager.navigateToNode(node)
+    fun navigateToDebugFullscreen() = navigationManager.navigateToDebugFullscreen()
 
     fun navigateBack() {
         when (screen.value) {
