@@ -162,7 +162,7 @@ void PerceptionController::Enable()
     return;
   }
 
-  // Match best effort and keep last 1 for bandwidth restricted environment like WiFi
+  // Currently used for the heavy processing of depth and point cloud
   auto qos = rclcpp::QoS(rclcpp::KeepLast(10))
                  .reliable()
                  .durability_volatile();
