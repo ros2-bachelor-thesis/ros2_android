@@ -1346,19 +1346,6 @@ extern "C"
     return g_app->perception_controller_->IsEnabled() ? JNI_TRUE : JNI_FALSE;
   }
 
-  JNIEXPORT jstring JNICALL
-  Java_com_github_mowerick_ros2_android_util_NativeBridge_getPerceptionStats(
-      JNIEnv *env, jclass /*clazz*/)
-  {
-    if (!g_app || !g_app->perception_controller_)
-    {
-      return env->NewStringUTF("{\"enabled\":false}");
-    }
-
-    std::string stats = g_app->perception_controller_->GetLastMeasurementJson();
-    return env->NewStringUTF(stats.c_str());
-  }
-
   // ============================================================================
   // Perception Debug Visualization JNI Functions
   // ============================================================================

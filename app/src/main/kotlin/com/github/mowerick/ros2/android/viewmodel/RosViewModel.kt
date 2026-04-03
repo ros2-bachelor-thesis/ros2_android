@@ -100,6 +100,8 @@ class RosViewModel(
     val pipelineNodes: StateFlow<List<PipelineNode>> = pipelineStateMachine.pipelineNodes
     val isProbing: StateFlow<Boolean> = pipelineStateMachine.isProbing
     val perceptionState: StateFlow<PerceptionManager.PerceptionState> = perceptionManager.perceptionState
+    val debugFrameRgb: StateFlow<Bitmap?> = perceptionManager.debugFrameRgb
+    val debugFrameDepth: StateFlow<Bitmap?> = perceptionManager.debugFrameDepth
 
     init {
         // Initialize USB Serial manager for LIDAR communication
@@ -128,6 +130,16 @@ class RosViewModel(
                 val currentScreen = screen.value
                 if (currentScreen is Screen.CameraDetail && currentScreen.cameraId == cameraId) {
                     sensorCameraManager.updateCameraFrame(cameraId)
+                }
+            }
+        }
+
+        // Register debug frame callback
+        NativeBridge.setDebugFrameCallback { frameId ->
+            viewModelScope.launch {
+                val currentScreen = screen.value
+                if (currentScreen is Screen.NodeDetail && currentScreen.nodeId == "object_detection") {
+                    perceptionManager.updateDebugFrame(frameId)
                 }
             }
         }
@@ -320,6 +332,9 @@ class RosViewModel(
         Log.w("RosViewModel", "User cancelled location settings dialog")
         addNotification("GPS: Location services required", Severity.WARNING)
     }
+
+    fun enableVisualization() = perceptionManager.enableVisualization()
+    fun disableVisualization() = perceptionManager.disableVisualization()
 
     override fun onCleared() {
         super.onCleared()

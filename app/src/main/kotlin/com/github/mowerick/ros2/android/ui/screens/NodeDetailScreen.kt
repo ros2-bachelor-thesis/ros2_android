@@ -1,8 +1,11 @@
 package com.github.mowerick.ros2.android.ui.screens
 
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,27 +21,25 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.github.mowerick.ros2.android.model.NodeState
 import com.github.mowerick.ros2.android.model.PipelineNode
 import com.github.mowerick.ros2.android.ui.components.CollapsibleCard
 import com.github.mowerick.ros2.android.ui.components.NodeStateChip
 import com.github.mowerick.ros2.android.ui.components.TopicInfoCard
-
-/**
- * Perception statistics for object detection display
- */
-data class PerceptionStats(
-    val totalDetections: Int = 0,
-    val activeTrackCount: Int = 0,
-    val queueSize: Int = 0,
-    val modelsLoaded: Boolean = false
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,8 +50,11 @@ fun NodeDetailScreen(
     onStartStop: () -> Unit,
     runningLocally: Boolean = false,
     detectedOnNetwork: Boolean = false,
-    perceptionEnabled: Boolean = false,
-    perceptionStats: PerceptionStats? = null
+    visualizationEnabled: Boolean = false,
+    debugFrameRgb: Bitmap? = null,
+    debugFrameDepth: Bitmap? = null,
+    onEnableVisualization: () -> Unit = {},
+    onDisableVisualization: () -> Unit = {}
 ) {
     Scaffold(
         topBar = {
@@ -152,35 +156,8 @@ fun NodeDetailScreen(
                 }
             }
 
-            // Perception-specific stats (only for object_detection node running locally)
-            if (node.id == "object_detection" && runningLocally && perceptionStats != null) {
-                item {
-                    CollapsibleCard(
-                        title = "Detection Statistics",
-                        initiallyExpanded = true
-                    ) {
-                        Text(
-                            text = "Status: ${if (perceptionEnabled) "Running" else "Stopped"}",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Text(
-                            text = "Total Detections: ${perceptionStats.totalDetections}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                        Text(
-                            text = "Active Tracks: ${perceptionStats.activeTrackCount}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                        Text(
-                            text = "Queue Size: ${perceptionStats.queueSize}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                }
-
+            // Perception-specific UI (only for object_detection node running locally)
+            if (node.id == "object_detection" && runningLocally) {
                 item {
                     CollapsibleCard(
                         title = "Pipeline Info",
@@ -205,6 +182,92 @@ fun NodeDetailScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(top = 4.dp)
                         )
+                    }
+                }
+
+                // Visualization toggle and frames
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Debug Visualization", style = MaterialTheme.typography.titleMedium)
+                            if (visualizationEnabled) {
+                                OutlinedButton(
+                                    onClick = onDisableVisualization,
+                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                                ) {
+                                    Text("Disable Visualization")
+                                }
+                            } else {
+                                Button(
+                                    onClick = onEnableVisualization,
+                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                                ) {
+                                    Text("Enable Visualization")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (visualizationEnabled) {
+                    item {
+                        var selectedTab by remember { mutableStateOf(0) }
+
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column {
+                                TabRow(selectedTabIndex = selectedTab) {
+                                    Tab(
+                                        selected = selectedTab == 0,
+                                        onClick = { selectedTab = 0 },
+                                        text = { Text("RGB + Tracks") }
+                                    )
+                                    Tab(
+                                        selected = selectedTab == 1,
+                                        onClick = { selectedTab = 1 },
+                                        text = { Text("Depth") }
+                                    )
+                                }
+
+                                when (selectedTab) {
+                                    0 -> {
+                                        if (debugFrameRgb != null) {
+                                            Image(
+                                                bitmap = debugFrameRgb.asImageBitmap(),
+                                                contentDescription = "RGB with YOLO + Deep SORT",
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .aspectRatio(debugFrameRgb.width.toFloat() / debugFrameRgb.height),
+                                                contentScale = ContentScale.Fit
+                                            )
+                                        } else {
+                                            Text(
+                                                "Waiting for RGB frame...",
+                                                modifier = Modifier.padding(16.dp),
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                        }
+                                    }
+                                    1 -> {
+                                        if (debugFrameDepth != null) {
+                                            Image(
+                                                bitmap = debugFrameDepth.asImageBitmap(),
+                                                contentDescription = "Depth colormap with YOLO",
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .aspectRatio(debugFrameDepth.width.toFloat() / debugFrameDepth.height),
+                                                contentScale = ContentScale.Fit
+                                            )
+                                        } else {
+                                            Text(
+                                                "Waiting for depth frame...",
+                                                modifier = Modifier.padding(16.dp),
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

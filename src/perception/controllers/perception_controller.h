@@ -89,12 +89,6 @@ class PerceptionController : public SensorDataProvider {
   bool IsReady() const { return detector_ && detector_->IsReady(); }
 
   /**
-   * Get detection statistics
-   */
-  size_t GetTotalDetections() const { return total_detections_; }
-  size_t GetActiveTrackCount() const { return active_tracks_; }
-
-  /**
    * Enable/disable debug visualization (JPEG encoding + storage)
    * @param enable true to enable, false to disable
    */
@@ -176,10 +170,6 @@ class PerceptionController : public SensorDataProvider {
 
   std::thread inference_thread_;
   std::atomic<bool> running_{false};
-
-  // Statistics
-  std::atomic<size_t> total_detections_{0};
-  std::atomic<size_t> active_tracks_{0};
 
   // ============================================================================
   // Callback handlers

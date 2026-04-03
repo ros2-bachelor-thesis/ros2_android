@@ -123,12 +123,7 @@ std::string PerceptionController::PrettyName() const
 
 std::string PerceptionController::GetLastMeasurementJson()
 {
-  std::ostringstream ss;
-  ss << "{\"enabled\":" << (enabled_ ? "true" : "false")
-     << ",\"total_detections\":" << total_detections_
-     << ",\"active_tracks\":" << active_tracks_
-     << "}";
-  return ss.str();
+  return enabled_ ? "{\"enabled\":true}" : "{\"enabled\":false}";
 }
 
 bool PerceptionController::GetLastMeasurement(jni::SensorReadingData &out_data)
@@ -456,10 +451,6 @@ void PerceptionController::ProcessFrame(
   LOGI("Perception: %zu detections, %zu tracks, %.1f ms (%.1f FPS)",
        result.detections.size(), result.tracks.size(),
        elapsed_ms, 1000.0 / elapsed_ms);
-
-  // Update statistics
-  total_detections_ += result.detections.size();
-  active_tracks_ = result.tracks.size();
 
   // =========================================================================
   // Step 4: Publish detections ONLY if depth+cloud available (matches Python)

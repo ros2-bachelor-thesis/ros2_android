@@ -26,7 +26,6 @@ import com.github.mowerick.ros2.android.ui.screens.DashboardScreen
 import com.github.mowerick.ros2.android.ui.screens.ExternalSensorsScreen
 import com.github.mowerick.ros2.android.ui.screens.LidarDetailScreen
 import com.github.mowerick.ros2.android.ui.screens.NodeDetailScreen
-import com.github.mowerick.ros2.android.ui.screens.PerceptionStats
 import com.github.mowerick.ros2.android.ui.screens.RosSetupScreen
 import com.github.mowerick.ros2.android.ui.screens.SensorDetailScreen
 import com.github.mowerick.ros2.android.ui.screens.SubsystemScreen
@@ -251,6 +250,8 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                 val cameraFrame by vm.cameraFrame.collectAsState()
                 val activeNotifications by vm.notifications.collectAsState()
                 val perceptionState by vm.perceptionState.collectAsState()
+                val debugFrameRgb by vm.debugFrameRgb.collectAsState()
+                val debugFrameDepth by vm.debugFrameDepth.collectAsState()
 
                 // Handle back button: navigate back if in submenu, exit if on Dashboard
                 BackHandler(enabled = screen != Screen.Dashboard) {
@@ -369,15 +370,11 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                                 onStartStop = { vm.toggleNodeState(node.id) },
                                 runningLocally = vm.isNodeRunningLocally(node.id),
                                 detectedOnNetwork = vm.isNodeDetectedOnNetwork(node.id),
-                                perceptionEnabled = perceptionState.enabled,
-                                perceptionStats = if (node.id == "object_detection") {
-                                    PerceptionStats(
-                                        totalDetections = perceptionState.totalDetections,
-                                        activeTrackCount = perceptionState.activeTrackCount,
-                                        queueSize = perceptionState.queueSize,
-                                        modelsLoaded = perceptionState.modelsLoaded
-                                    )
-                                } else null
+                                visualizationEnabled = perceptionState.visualizationEnabled,
+                                debugFrameRgb = debugFrameRgb,
+                                debugFrameDepth = debugFrameDepth,
+                                onEnableVisualization = { vm.enableVisualization() },
+                                onDisableVisualization = { vm.disableVisualization() }
                             )
                         }
                     }

@@ -1,6 +1,7 @@
 package com.github.mowerick.ros2.android.util
 
 import android.graphics.Bitmap
+import android.util.Log
 import com.github.mowerick.ros2.android.model.CameraInfo
 import com.github.mowerick.ros2.android.model.ExternalDeviceInfo
 import com.github.mowerick.ros2.android.model.SensorInfo
@@ -16,6 +17,7 @@ object NativeBridge {
     private var gpsDisableCallback: (() -> Unit)? = null
     private var sensorDataCallback: ((String) -> Unit)? = null
     private var cameraFrameCallback: ((String) -> Unit)? = null
+    private var debugFrameCallback: ((String) -> Unit)? = null
 
     external fun nativeInit(cacheDir: String, packageName: String)
     external fun nativeDestroy()
@@ -56,7 +58,11 @@ object NativeBridge {
     external fun enablePerception(modelsPath: String)
     external fun disablePerception()
     external fun isPerceptionEnabled(): Boolean
-    external fun getPerceptionStats(): String
+
+    // Perception debug visualization
+    external fun nativeEnablePerceptionVisualization(enable: Boolean)
+    external fun nativeGetDebugFrame(frameId: String): Bitmap?
+    external fun nativeSetDebugFrameCallback()
 
     fun setNotificationCallback(callback: (severity: String, message: String) -> Unit) {
         notificationCallback = callback
@@ -76,6 +82,11 @@ object NativeBridge {
     fun setCameraFrameCallback(callback: (cameraId: String) -> Unit) {
         cameraFrameCallback = callback
         nativeSetCameraFrameCallback()
+    }
+
+    fun setDebugFrameCallback(callback: (frameId: String) -> Unit) {
+        debugFrameCallback = callback
+        nativeSetDebugFrameCallback()
     }
 
     // Called from native code (JNI)
@@ -111,5 +122,12 @@ object NativeBridge {
     @JvmStatic
     private fun onCameraFrameUpdate(cameraId: String) {
         cameraFrameCallback?.invoke(cameraId)
+    }
+
+    // Called from native code when debug frame is updated
+    @Suppress("unused")
+    @JvmStatic
+    private fun onDebugFrameUpdate(frameId: String) {
+        debugFrameCallback?.invoke(frameId)
     }
 }
