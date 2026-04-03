@@ -444,7 +444,7 @@ void PerceptionController::ProcessFrame(
   perception::PerceptionResult result = detector_->ProcessFrame(
       bgr_buffer.data(), width, height,
       depth_data, depth_width, depth_height,
-      kConfidenceThreshold, kIouThreshold);
+      kConfidenceThreshold, kIouThreshold, false); // TODO (ohagenauer) enable tracking once correctly implemented in ros2_android_perception
   auto end = std::chrono::high_resolution_clock::now();
 
   double elapsed_ms = std::chrono::duration<double, std::milli>(end - start).count();
