@@ -52,7 +52,7 @@ set(cmake_with_env "${CMAKE_COMMAND}" -E
 ExternalProject_Add(ros_for_android
   BUILD_ALWAYS ON
   DOWNLOAD_COMMAND ""
-  CMAKE_COMMAND ${cmake_with_env} -DCMAKE_BUILD_TYPE=RELEASE  # TODO(sloretz) better release/debug switching
+  CMAKE_COMMAND ${cmake_with_env} -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
   BUILD_COMMAND ${cmake_with_env} --build .
   SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src"
   DEPENDS
