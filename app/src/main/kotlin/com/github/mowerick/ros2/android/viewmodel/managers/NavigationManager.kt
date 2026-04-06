@@ -19,6 +19,9 @@ class NavigationManager(initialScreen: Screen = Screen.Dashboard) {
     private val navigationStack = mutableListOf<Screen>()
 
     init {
+        if (initialScreen != Screen.Dashboard) {
+            navigationStack.add(Screen.Dashboard)
+        }
         navigationStack.add(initialScreen)
     }
 
