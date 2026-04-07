@@ -378,7 +378,8 @@ class PipelineStateMachine(
                 subscribesTo = listOf(
                     TopicInfo("/cpb_eggs_center", "geometry_msgs/msg/Point"),
                     TopicInfo("/zed/zed_node/imu/data", "sensor_msgs/msg/Imu"),
-                    TopicInfo("/arm_position_feedback", "std_msgs/msg/String")
+                    TopicInfo("/arm_position_feedback", "std_msgs/msg/String"),
+                    TopicInfo("/pan_tilt_fixed_position", "std_msgs/msg/Float32MultiArray")
                 ),
                 publishesTo = listOf(
                     TopicInfo("/arm_position_goal", "std_msgs/msg/Float32MultiArray")
@@ -406,14 +407,20 @@ class PipelineStateMachine(
             PipelineNode(
                 id = "micro_ros_agent",
                 name = "micro-ROS Agent",
-                description = "Bridges ROS 2 DDS network to Zephyr microcontroller via USB serial (115200 baud). Forwards /PointNShoot commands to pan/tilt arm MCU. Investigation - may require external PC.",
+                description = "Bridges ROS 2 DDS network to ESP32-S3 microcontroller via USB serial (115200 baud). 3-axis stepper control (pitch, yaw, slide) with laser. Forwards /PointNShoot and /Homecoming commands, receives ACK/DONE/NACK feedback and diagnostics.",
                 subscribesTo = listOf(
-                    TopicInfo("/PointNShoot", "std_msgs/msg/Float32MultiArray")
+                    TopicInfo("/PointNShoot", "std_msgs/msg/Float32MultiArray"),
+                    TopicInfo("/Homecoming", "std_msgs/msg/Float32")
                 ),
                 publishesTo = listOf(
                     TopicInfo("/PointNShoot_ACK", "std_msgs/msg/Float32"),
                     TopicInfo("/PointNShoot_DONE", "std_msgs/msg/Float32"),
-                    TopicInfo("/PointNShoot_NACK", "std_msgs/msg/Float32")
+                    TopicInfo("/PointNShoot_NACK", "std_msgs/msg/Float32"),
+                    TopicInfo("/Homecoming_ACK", "std_msgs/msg/Float32"),
+                    TopicInfo("/Homecoming_DONE", "std_msgs/msg/Float32"),
+                    TopicInfo("/Homecoming_NACK", "std_msgs/msg/Float32"),
+                    TopicInfo("/heartbeat_from_tip_tilt_mount", "std_msgs/msg/Int32"),
+                    TopicInfo("/loggs_from_tip_tilt_mount", "std_msgs/msg/String")
                 ),
                 upstreamNodeId = "target_manager",
                 isExternal = false
