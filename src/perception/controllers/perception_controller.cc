@@ -26,16 +26,6 @@ namespace
   constexpr float kConfidenceThreshold = 0.5f; // Matches Python line 245
   constexpr float kIouThreshold = 0.45f;
 
-  // ZED camera resolution constants (hardcoded for ZED2)
-  // Python parameters (object_detection.py lines 45-47):
-  // - img_size_y: 720 (RGB height)
-  // - pointcloud_size: 448 (point cloud width)
-  // - pointcloud_size_y: 256 (point cloud height)
-  constexpr int RGB_WIDTH = 1280;
-  constexpr int RGB_HEIGHT = 720;
-  constexpr int CLOUD_WIDTH = 448;
-  constexpr int CLOUD_HEIGHT = 256;
-
 } // namespace
 
 // ============================================================================
@@ -471,10 +461,10 @@ void PerceptionController::ProcessFrame(
           static_cast<int>(det.bbox[3] - det.bbox[1])); // height
 
       // Get 3D location from point cloud (with RGB→cloud scaling)
-      Point3f point3d = Get3DLocation(bbox, *cloud);
+      Point3f point3d = Get3DLocation(bbox, *cloud, width, height);
 
       // Crop point cloud for this detection (with depth filtering)
-      auto cropped_cloud = CropPointCloud(bbox, *cloud, *depth);
+      auto cropped_cloud = CropPointCloud(bbox, *cloud, *depth, width, height);
 
       // Publish detection result
       PublishDetection(det, point3d, std::move(cropped_cloud), rgb->header);
@@ -577,22 +567,17 @@ void PerceptionController::ProcessFrame(
 
 Point3f PerceptionController::Get3DLocation(
     const Rect &bbox,
-    const sensor_msgs::msg::PointCloud2 &cloud)
+    const sensor_msgs::msg::PointCloud2 &cloud,
+    int rgb_width, int rgb_height)
 {
 
-  // Find center of bbox (in RGB coordinates 1280×720)
+  // Find center of bbox (in RGB coordinates)
   int rgb_center_x = bbox.x + bbox.width / 2;
   int rgb_center_y = bbox.y + bbox.height / 2;
 
-  // Scale from RGB space (1280×720) to point cloud space (448×256)
-  // Python code (line 310):
-  // int(y*rgb_to_pointcloud_factor_y+x//rgb_to_pointcloud_factor_x)
-  // where rgb_to_pointcloud_factor_y = pointcloud_size/image_to_pointcloud_factor_y
-  //       rgb_to_pointcloud_factor_x = img_size_y/pointcloud_size_y
-  //
-  // Simplified: scale_x = CLOUD_WIDTH / RGB_WIDTH, scale_y = CLOUD_HEIGHT / RGB_HEIGHT
-  float scale_x = static_cast<float>(CLOUD_WIDTH) / RGB_WIDTH;
-  float scale_y = static_cast<float>(CLOUD_HEIGHT) / RGB_HEIGHT;
+  // Scale from actual RGB space to actual point cloud space
+  float scale_x = static_cast<float>(cloud.width) / rgb_width;
+  float scale_y = static_cast<float>(cloud.height) / rgb_height;
 
   int center_x = static_cast<int>(rgb_center_x * scale_x);
   int center_y = static_cast<int>(rgb_center_y * scale_y);
@@ -648,7 +633,8 @@ Point3f PerceptionController::Get3DLocation(
 sensor_msgs::msg::PointCloud2::UniquePtr PerceptionController::CropPointCloud(
     const Rect &bbox,
     const sensor_msgs::msg::PointCloud2 &cloud,
-    const sensor_msgs::msg::Image &depth)
+    const sensor_msgs::msg::Image &depth,
+    int rgb_width, int rgb_height)
 {
   auto cropped = std::make_unique<sensor_msgs::msg::PointCloud2>();
   cropped->header = cloud.header;
@@ -657,38 +643,38 @@ sensor_msgs::msg::PointCloud2::UniquePtr PerceptionController::CropPointCloud(
   cropped->point_step = cloud.point_step;
   cropped->is_dense = false;
 
-  // Scale bbox from RGB space (1280×720) to point cloud space (448×256)
-  float scale_x = static_cast<float>(CLOUD_WIDTH) / RGB_WIDTH;
-  float scale_y = static_cast<float>(CLOUD_HEIGHT) / RGB_HEIGHT;
+  // Scale bbox from RGB to DEPTH space (depth_registered matches RGB from ZED)
+  float depth_scale_x = static_cast<float>(depth.width) / rgb_width;
+  float depth_scale_y = static_cast<float>(depth.height) / rgb_height;
 
-  int scaled_x1 = static_cast<int>(bbox.x * scale_x);
-  int scaled_y1 = static_cast<int>(bbox.y * scale_y);
-  int scaled_x2 = static_cast<int>((bbox.x + bbox.width) * scale_x);
-  int scaled_y2 = static_cast<int>((bbox.y + bbox.height) * scale_y);
+  int dx1 = std::max(0, static_cast<int>(bbox.x * depth_scale_x));
+  int dy1 = std::max(0, static_cast<int>(bbox.y * depth_scale_y));
+  int dx2 = std::min(static_cast<int>(depth.width),
+                     static_cast<int>((bbox.x + bbox.width) * depth_scale_x));
+  int dy2 = std::min(static_cast<int>(depth.height),
+                     static_cast<int>((bbox.y + bbox.height) * depth_scale_y));
 
-  // Clamp bbox to cloud bounds
-  int x1 = std::max(0, scaled_x1);
-  int y1 = std::max(0, scaled_y1);
-  int x2 = std::min(static_cast<int>(cloud.width), scaled_x2);
-  int y2 = std::min(static_cast<int>(cloud.height), scaled_y2);
+  int depth_crop_width = dx2 - dx1;
+  int depth_crop_height = dy2 - dy1;
 
-  int crop_width = x2 - x1;
-  int crop_height = y2 - y1;
-
-  if (crop_width <= 0 || crop_height <= 0)
+  if (depth_crop_width <= 0 || depth_crop_height <= 0)
   {
     LOGW("Invalid bbox for cropping");
     return nullptr;
   }
 
-  // Calculate median depth in bbox (Python line 288)
+  // Cloud scaling (separate from depth)
+  float cloud_scale_x = static_cast<float>(cloud.width) / rgb_width;
+  float cloud_scale_y = static_cast<float>(cloud.height) / rgb_height;
+
+  // Calculate median depth in bbox (Python line 288) - iterate in depth space
   std::vector<float> depth_values;
-  depth_values.reserve(crop_width * crop_height);
+  depth_values.reserve(depth_crop_width * depth_crop_height);
 
   const float *depth_data = reinterpret_cast<const float *>(depth.data.data());
-  for (int y = y1; y < y2; ++y)
+  for (int y = dy1; y < dy2; ++y)
   {
-    for (int x = x1; x < x2; ++x)
+    for (int x = dx1; x < dx2; ++x)
     {
       float d = depth_data[y * depth.width + x];
       if (std::isfinite(d) && d > 0.0f)
@@ -714,10 +700,18 @@ sensor_msgs::msg::PointCloud2::UniquePtr PerceptionController::CropPointCloud(
   float min_depth = 0.9f * median_depth;
   float max_depth = 1.1f * median_depth;
 
-  cropped->width = crop_width;
-  cropped->height = crop_height;
-  cropped->row_step = crop_width * cloud.point_step;
-  cropped->data.reserve(crop_height * cropped->row_step);
+  // Set output cloud dimensions based on cloud-scaled bbox
+  int cx1 = std::max(0, static_cast<int>(bbox.x * cloud_scale_x));
+  int cy1 = std::max(0, static_cast<int>(bbox.y * cloud_scale_y));
+  int cx2 = std::min(static_cast<int>(cloud.width),
+                     static_cast<int>((bbox.x + bbox.width) * cloud_scale_x));
+  int cy2 = std::min(static_cast<int>(cloud.height),
+                     static_cast<int>((bbox.y + bbox.height) * cloud_scale_y));
+
+  cropped->width = cx2 - cx1;
+  cropped->height = cy2 - cy1;
+  cropped->row_step = cropped->width * cloud.point_step;
+  cropped->data.reserve(cropped->height * cropped->row_step);
 
   // Find XYZ field offsets
   int x_offset = -1, y_offset = -1, z_offset = -1;
@@ -731,10 +725,10 @@ sensor_msgs::msg::PointCloud2::UniquePtr PerceptionController::CropPointCloud(
       z_offset = field.offset;
   }
 
-  // Extract filtered points
-  for (int y = y1; y < y2; ++y)
+  // Extract filtered points - iterate DEPTH space, map to CLOUD space for cloud access
+  for (int y = dy1; y < dy2; ++y)
   {
-    for (int x = x1; x < x2; ++x)
+    for (int x = dx1; x < dx2; ++x)
     {
       float pixel_depth = depth_data[y * depth.width + x];
 
@@ -744,8 +738,16 @@ sensor_msgs::msg::PointCloud2::UniquePtr PerceptionController::CropPointCloud(
       if (!std::isfinite(pixel_depth) || pixel_depth > 5.0f)
         continue;
 
+      // Convert depth pixel to cloud pixel (depth -> RGB -> cloud)
+      int cloud_x = std::max(0, std::min(
+          static_cast<int>(x / depth_scale_x * cloud_scale_x),
+          static_cast<int>(cloud.width) - 1));
+      int cloud_y = std::max(0, std::min(
+          static_cast<int>(y / depth_scale_y * cloud_scale_y),
+          static_cast<int>(cloud.height) - 1));
+
       // Check if point cloud point is valid
-      size_t src_index = y * cloud.row_step + x * cloud.point_step;
+      size_t src_index = cloud_y * cloud.row_step + cloud_x * cloud.point_step;
       if (x_offset >= 0 && src_index + z_offset + sizeof(float) <= cloud.data.size())
       {
         float z = *reinterpret_cast<const float *>(&cloud.data[src_index + z_offset]);

@@ -219,7 +219,8 @@ class PerceptionController : public SensorDataProvider {
    * @return 3D point (x, y, z) or (NaN, NaN, NaN) if invalid
    */
   Point3f Get3DLocation(const Rect& bbox,
-                        const sensor_msgs::msg::PointCloud2& cloud);
+                        const sensor_msgs::msg::PointCloud2& cloud,
+                        int rgb_width, int rgb_height);
 
   /**
    * Crop point cloud to bbox region with depth filtering
@@ -231,7 +232,8 @@ class PerceptionController : public SensorDataProvider {
   sensor_msgs::msg::PointCloud2::UniquePtr CropPointCloud(
       const Rect& bbox,
       const sensor_msgs::msg::PointCloud2& cloud,
-      const sensor_msgs::msg::Image& depth);
+      const sensor_msgs::msg::Image& depth,
+      int rgb_width, int rgb_height);
 
   // ============================================================================
   // Publishing and logging
