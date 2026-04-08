@@ -36,7 +36,6 @@ macro(build_crosscompile_dependencies)
 
   ExternalProject_Add(deps-ydlidar_sdk
     DOWNLOAD_COMMAND ""
-    PATCH_COMMAND patch -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/android_patches/ydlidar_sdk_android_logging.patch || true
     CMAKE_COMMAND ${ydlidar_cmake_with_env}
     BUILD_COMMAND ${ydlidar_cmake_with_env} --build .
     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/deps/ydlidar_sdk"

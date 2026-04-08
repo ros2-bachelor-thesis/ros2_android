@@ -61,6 +61,8 @@ $(DEPS_STAMP): ros.repos
 	cd $(DEPS_DIR)/fast-dds && git submodule update --init thirdparty/asio thirdparty/tinyxml2 thirdparty/android-ifaddrs
 	@echo "==> Applying Android patches for Fast DDS..."
 	cd $(DEPS_DIR)/fast-dds && patch -p1 < $(CURDIR)/android_patches/fast_dds_filewatch_chrono.patch || true
+	@echo "==> Applying Android patches for YDLidar SDK..."
+	cd $(DEPS_DIR)/ydlidar_sdk && patch -p1 < $(CURDIR)/android_patches/ydlidar_sdk_android_support.patch || true
 	@echo "==> Fetching ros2_android_perception dependencies..."
 	cd $(DEPS_DIR)/ros2_android_perception && $(MAKE) deps
 	@touch $(DEPS_STAMP)
