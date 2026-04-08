@@ -32,7 +32,7 @@ From rosbag:
 
 ```bash
 # Terminal 1: Play ZED rosbag
-ros2 bag play /path/to/rosbag --loop
+ros2 bag play /path/to/rosbag --loop --rate 0.1
 
 # Terminal 2: Android app already running on device (connected via Wi-Fi DDS)
 

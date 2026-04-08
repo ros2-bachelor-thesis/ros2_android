@@ -19,14 +19,14 @@ Target: Android 13 (API 33), NDK 26.3.
 - **Notification system** - user notification overlay for alerts and error messages from both native (C++) and Kotlin layers
 - **Jetpack Compose UI** - sensor list, live sensor data view, camera preview, pipeline node management with runtime state visualization
 - **Testing framework** - Python-based ROS 2 subscriber test suite with matplotlib visualizers for all sensor types
+- **Target manager** - CPB egg selection with IMU-based orientation calibration, subscribes to detection results and ZED IMU, publishes pan/tilt goals for the arm commander
+- **Arm commander** - pan/tilt arm control with ACK/NACK protocol and state machine (IDLE - AWAITING_ACK - AWAITING_DONE - WAIT_AFTER_DONE), subscribes to position goals, publishes `/PointNShoot` commands for micro-ROS
 
 ### Planned (Not Yet Implemented)
 
 - **DDS-Security** - OpenSSL static linking (hidden visibility to avoid BoringSSL collision), Cyclone DDS security plugins, SROS2 credentials
 - **USB camera** - external USB cameras via libusb/libuvc with JNI file descriptor handoff, published as `sensor_msgs/Image`
 - **micro-ROS Agent** - hosting the agent on Android to bridge ROS 2 DDS to microcontrollers via serial/USB
-- **Target manager** - CPB egg selection and IMU-based orientation calibration for laser positioning
-- **Arm commander** - pan/tilt arm control with ACK/NACK protocol and state machine management
 
 ## Architecture
 
@@ -46,14 +46,15 @@ Target: Android 13 (API 33), NDK 26.3.
 │   ┌───────────────────────────────────────┐     │
 │   │ ROS 2 Interface (rclcpp)              │     │
 │   │ - Node lifecycle                      │     │
-│   │ - Publisher management                │     │
+│   │ - Publisher / Subscriber management   │     │
 │   └───────────────┬───────────────────────┘     │
 │                   │                             │
 │   ┌───────────────▼───────────────────────┐     │
-│   │ Controllers                           │     │
-│   │ - Sensor controllers (IMU, etc.)      │     │
-│   │ - GPS controller (receives via JNI)   │     │
-│   │ - Camera controllers (front/back)     │     │
+│   │ Sensor Controllers                    │     │
+│   │ - IMU (accel, gyro, mag, baro, lux)   │     │
+│   │ - GPS (receives via JNI)              │     │
+│   │ - Camera (front/back via Camera2)     │     │
+│   │ - LiDAR (YDLIDAR via USB serial)      │     │
 │   └───┬───────────────────────┬───────────┘     │
 │       │                       │                 │
 │   ┌───▼──────────┐      ┌─────▼────────┐        │
@@ -61,6 +62,25 @@ Target: Android 13 (API 33), NDK 26.3.
 │   │   Queue      │      │   callbacks  │        │
 │   │              │      │   (via JNI)  │        │
 │   └──────────────┘      └──────────────┘        │
+│                                                 │
+│   ┌─────────────────────────────────────────┐   │
+│   │ Perception & Positioning Pipeline       │   │
+│   │                                         │   │
+│   │ ZED (external) ──► Object Detection     │   │
+│   │   (sub: rgb, depth,   (NCNN YOLOv9-s   │   │
+│   │    point cloud)        + Deep SORT)     │   │
+│   │                           │             │   │
+│   │                    ┌──────▼──────┐      │   │
+│   │                    │Target Mgr   │      │   │
+│   │                    │(sub: eggs,  │      │   │
+│   │                    │ IMU, fb)    │      │   │
+│   │                    └──────┬──────┘      │   │
+│   │                    ┌──────▼──────┐      │   │
+│   │                    │Arm Commander│      │   │
+│   │                    │(pub: PnS,   │      │   │
+│   │                    │ sub: ACK)   │      │   │
+│   │                    └─────────────┘      │   │
+│   └─────────────────────────────────────────┘   │
 └──────┬──────────────────────────────────────────┘
        │
 ┌──────▼──────┐
@@ -74,7 +94,8 @@ Target: Android 13 (API 33), NDK 26.3.
 ┌─────────▼───────────────────────────────────────────────────┐
 │   ROS 2 Network (same domain ID)                            │
 │   - Other ROS 2 nodes on host machine                       │
-│   - Topics: /<device_id>/sensors/*, /<device_id>/camera/*   │
+│   - Topics: /<device_id>/sensors/*, /<device_id>/camera/*,  │
+│     /scan, /cpb_*, /arm_position_*, /PointNShoot            │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -85,6 +106,7 @@ The native layer cross-compiles ~70 ROS 2 Humble packages via a CMake superbuild
 - **IMU sensors** (accelerometer, gyroscope, magnetometer, barometer, illuminance) - acquired in C++ via `ASensorManager` (NDK), event queue forwarded to ROS controllers
 - **GPS** - acquired in Kotlin via `FusedLocationProviderClient` (Google Play Services - required on device), location updates passed to C++ GPS controller via JNI
 - **Cameras** - acquired in Java via `Camera2` API, frames passed to C++ camera controllers via JNI for encoding and publishing
+- **USB LiDAR** - YDLIDAR connected via USB serial (JNI fd handoff from Kotlin USB Host API), scan data published by C++ LiDAR controller
 
 ## Published ROS 2 Topics
 
@@ -111,7 +133,24 @@ The app publishes the following topics that can be discovered and consumed by ot
 - `/<device_id>/camera/front/camera_info` - `sensor_msgs/CameraInfo` - front camera intrinsics
 - `/<device_id>/camera/rear/camera_info` - `sensor_msgs/CameraInfo` - rear camera intrinsics
 
-> [!NOTE] > `<device_id>` is configurable in the app's ROS Setup screen and defaults to the device's sanitized name (e.g., `pixel_7`, `galaxy_s23`). This namespace allows multiple Android devices to publish on the same ROS 2 network without topic collisions.
+**LiDAR:**
+
+- `/scan` - `sensor_msgs/LaserScan` - YDLIDAR scan data (range, angle, intensity)
+
+**Pipeline (perception & positioning):**
+
+- `/<device_id>/cpb_beetle_center` - `geometry_msgs/Point` - 3D beetle detection center
+- `/<device_id>/cpb_beetle` - `sensor_msgs/PointCloud2` - cropped beetle point cloud
+- `/<device_id>/cpb_larva_center` - `geometry_msgs/Point` - 3D larva detection center
+- `/<device_id>/cpb_larva` - `sensor_msgs/PointCloud2` - cropped larva point cloud
+- `/<device_id>/cpb_eggs_center` - `geometry_msgs/Point` - 3D egg detection center
+- `/<device_id>/cpb_eggs` - `sensor_msgs/PointCloud2` - cropped egg point cloud
+- `/arm_position_goal` - `std_msgs/Float32MultiArray` - pan/tilt goal from target manager
+- `/PointNShoot` - `std_msgs/Float32MultiArray` - pan/tilt command to microcontroller
+- `/arm_position_feedback` - `std_msgs/String` - arm commander state feedback
+
+> [!NOTE]
+> `<device_id>` is configurable in the app's ROS Setup screen and defaults to the device's sanitized name (e.g., `pixel_7`, `galaxy_s23`). This namespace allows multiple Android devices to publish on the same ROS 2 network without topic collisions.
 
 All published messages include a `frame_id` field in the header (e.g., `"<device_id>_camera_front"`, `"<device_id>_imu_link"`) and a timestamp indicating when the data was captured. This allows other ROS 2 nodes to transform the data between coordinate frames and temporally synchronize multiple sensors using ROS 2's TF (Transform) system.
 
@@ -169,6 +208,41 @@ TARGET_RUNNING → COMMAND_ACTIVE
 - Input resolution: 1280×736
 - Feature dimension: 128-D appearance features for tracking
 - Inference backend: NCNN (Tencent) optimized for ARM NEON
+
+### Target Manager Node
+
+Selects CPB egg targets for laser engagement, compensating for camera-to-laser physical offsets and device orientation via ZED IMU data.
+
+**State machine:** INIT - CALIBRATING - READY - SENT_TARGET - WAITING_TO_RETURN - RETURNING - FINISHED (also supports FIXED_POSITION_MODE for manual override)
+
+**Input (subscribed topics):**
+
+- `/cpb_eggs_center` - `geometry_msgs/Point` - 3D egg cluster location from object detection
+- `/zed/zed_node/imu/data` - `sensor_msgs/Imu` - ZED camera IMU for orientation calibration
+- `/arm_position_feedback` - `std_msgs/String` - state feedback from arm commander
+- `/pan_tilt_fixed_position` - `std_msgs/Float32MultiArray` - manual override position
+
+**Output (published topics):**
+
+- `/arm_position_goal` - `std_msgs/Float32MultiArray` - computed pan/tilt angles for arm commander
+
+### Arm Commander Node
+
+Manages the pan/tilt arm command protocol with the microcontroller via micro-ROS. Implements a state machine with timeout-based retransmission and NACK handling.
+
+**State machine:** IDLE - AWAITING_ACK - AWAITING_DONE - WAIT_AFTER_DONE - WAIT_AFTER_NACK - NACK_LIMIT_EXCEEDED
+
+**Input (subscribed topics):**
+
+- `/arm_position_goal` - `std_msgs/Float32MultiArray` - pan/tilt goal from target manager
+- `/PointNShoot_ACK` - `std_msgs/Float32` - acknowledgment from microcontroller
+- `/PointNShoot_DONE` - `std_msgs/Float32` - completion signal from microcontroller
+- `/PointNShoot_NACK` - `std_msgs/Float32` - negative acknowledgment from microcontroller
+
+**Output (published topics):**
+
+- `/PointNShoot` - `std_msgs/Float32MultiArray` - pan/tilt command to microcontroller
+- `/arm_position_feedback` - `std_msgs/String` - current state name (consumed by target manager)
 
 ### Dynamic Node Detection
 
