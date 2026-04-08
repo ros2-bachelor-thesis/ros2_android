@@ -1,0 +1,1030 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index e08ae6f..55bc2fd 100755
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -17,7 +17,8 @@ ELSE()
+ ENDIF()
+ ##################################################
+ # Add c++11 Flag
+-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
++SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-writable-strings -Wno-format-security -Wno-format -std=c++11")
++
+ 
+ ##########################################################
+ IF (CMAKE_SYSTEM_NAME MATCHES "Linux")
+diff --git a/core/base/CMakeLists.txt b/core/base/CMakeLists.txt
+index 9b61fe6..2a7b38c 100644
+--- a/core/base/CMakeLists.txt
++++ b/core/base/CMakeLists.txt
+@@ -6,6 +6,7 @@ add_to_ydlidar_sources(${SRCS})
+ 
+ IF (WIN32)
+ add_to_ydlidar_libraries(Winmm)
+-ELSE()                   
++ELSEIF(NOT ANDROID)
++# Android Bionic includes pthread in libc
+ add_to_ydlidar_libraries(pthread)
+ ENDIF()                                      
+diff --git a/core/base/thread.h b/core/base/thread.h
+index b276b38..65ff2d4 100644
+--- a/core/base/thread.h
++++ b/core/base/thread.h
+@@ -46,7 +46,7 @@ namespace ydlidar
+           Thread thread_(proc, param);
+ #if defined(_WIN32)
+           thread_._handle = (_size_t)(_beginthreadex(NULL, 0,
+-            (unsigned int(__stdcall *)(void *))proc, param, 0, NULL));
++                                                     (unsigned int(__stdcall *)(void *))proc, param, 0, NULL));
+ #else
+           assert(sizeof(thread_._handle) >= sizeof(pthread_t));
+ 
+@@ -57,7 +57,7 @@ namespace ydlidar
+           {
+             thread_._handle = 0;
+             fprintf(stderr, "[YDLIDAR] Fail to create thread!\n\tError[%s]\n",
+-              strerror(ret));
++                    strerror(ret));
+           }
+ #endif
+           return thread_;
+@@ -103,7 +103,7 @@ namespace ydlidar
+         {
+           return _param;
+         }
+-        //等待线程退出
++        // 等待线程退出
+         int join(unsigned long timeout = -1)
+         {
+           if (!_handle)
+@@ -135,7 +135,7 @@ namespace ydlidar
+           printf("[YDLIDAR DEBUG] Thread [0x%X] ready to cancel[%d]\n", _handle, s);
+           s = pthread_join((pthread_t)(_handle), NULL);
+           printf("[YDLIDAR DEBUG] Thread [0x%X] ready to cancel[%d] time[%u]\n",
+-            _handle, s, getms() - t);
++                 _handle, s, getms() - t);
+           if (ESRCH == s)
+           {
+             printf("[YDLIDAR] Thread [0x%X] has been canceled in other thread\n", _handle);
+@@ -152,10 +152,11 @@ namespace ydlidar
+ #endif
+           return 0;
+         }
+-        //判断是否需要退出线程（限子线程内调用）
++        // 判断是否需要退出线程（限子线程内调用）
+         static void needExit()
+         {
+-#if defined(_WIN32)
++#if defined(_WIN32) || defined(ANDROID)
++          // pthread_testcancel not supported on Windows or Android
+ #else
+           pthread_testcancel();
+ #endif
+@@ -175,5 +176,5 @@ namespace ydlidar
+       };
+ 
+     } // base
+-  }  // core
++  } // core
+ } // ydlidar
+diff --git a/core/base/ydlidar.h b/core/base/ydlidar.h
+index f86667d..4a52fad 100644
+--- a/core/base/ydlidar.h
++++ b/core/base/ydlidar.h
+@@ -65,6 +65,13 @@ set_signal_handler(int signal_value, signal_handler_t signal_handler)
+       msg[error_length - 1] = '\0';
+     }
+ 
++#elif defined(ANDROID)
++    // Android Bionic uses XSI strerror_r which returns char*
++    char *msg = strerror_r(errno, error_string, error_length);
++    if (msg != error_string) {
++      strncpy(error_string, msg, error_length);
++      error_string[error_length - 1] = '\0';
++    }
+ #else
+     int error_status = strerror_r(errno, error_string, error_length);
+ 
+diff --git a/core/common/ydlidar_help.h b/core/common/ydlidar_help.h
+index 941b679..c09d945 100644
+--- a/core/common/ydlidar_help.h
++++ b/core/common/ydlidar_help.h
+@@ -42,6 +42,11 @@
+ #pragma once
+ #include <sstream>
+ #include <iomanip>
++
++#ifdef __ANDROID__
++#include <android/log.h>
++#endif
++
+ #include <stdarg.h>
+ #include "DriverInterface.h"
+ 
+@@ -59,6 +64,7 @@ using namespace base;
+  */
+ namespace common {
+ 
++#ifndef __ANDROID__
+ //颜色定义
+ #ifndef COLOR
+     #define COLOFF  "\033[0m"      ///关闭所有属性
+@@ -95,52 +101,104 @@ namespace common {
+   va_end(ap); \
+   printf(buff); \
+   printf("\n");
++#endif
+ 
+ //调试
+ inline void debug(char* fmt, ...)
+ {
++#ifdef __ANDROID__
++  char buff[1024] = {0};
++  va_list ap;
++  va_start(ap, fmt);
++  vsnprintf(buff, sizeof(buff), fmt, ap);
++  va_end(ap);
++  __android_log_print(ANDROID_LOG_DEBUG, "YDLidar_SDK", "%s", buff);
++#else
+   printf(GREEN); //设置绿色
+   PRINT_TIME
+   printf("[debug] ");
+   FORMAT_STDOUT
+   printf(COLOFF); //恢复默认颜色
+   fflush(stdout);
++#endif
+ }
+ 
+ //常规
+ inline void info(char* fmt, ...)
+ {
++#ifdef __ANDROID__
++  char buff[1024] = {0};
++  va_list ap;
++  va_start(ap, fmt);
++  vsnprintf(buff, sizeof(buff), fmt, ap);
++  va_end(ap);
++  __android_log_print(ANDROID_LOG_INFO, "YDLidar_SDK", "%s", buff);
++#else
+   PRINT_TIME
+   printf("[info] ");
+   FORMAT_STDOUT
+   fflush(stdout);
++#endif
+ }
+ 
+ //警告
+ inline void warn(char* fmt, ...)
+ {
++#ifdef __ANDROID__
++  char buff[1024] = {0};
++  va_list ap;
++  va_start(ap, fmt);
++  vsnprintf(buff, sizeof(buff), fmt, ap);
++  va_end(ap);
++  __android_log_print(ANDROID_LOG_WARN, "YDLidar_SDK", "%s", buff);
++#else
+   printf(YELLOW); //设置黄色
+   PRINT_TIME
+   printf("[warn] ");
+   FORMAT_STDOUT
+   printf(COLOFF); //恢复默认颜色
+   fflush(stdout);
++#endif
+ }
+ 
+ //错误
+ inline void error(char* fmt, ...)
+ {
++#ifdef __ANDROID__
++  char buff[1024] = {0};
++  va_list ap;
++  va_start(ap, fmt);
++  vsnprintf(buff, sizeof(buff), fmt, ap);
++  va_end(ap);
++  __android_log_print(ANDROID_LOG_ERROR, "YDLidar_SDK", "%s", buff);
++#else
+   printf(RED); //设置红色
+   PRINT_TIME
+   printf("[error] ");
+   FORMAT_STDOUT
+   printf(COLOFF); //恢复默认颜色
+   fflush(stdout);
++#endif
+ }
+ 
+ //调试（16进制）
+ inline void debugh(const uint8_t *data, int size, const char* prefix=NULL)
+ {
++#ifdef __ANDROID__
++  if (!data || !size)
++    return;
++
++  // Build hex string
++  char buff[2048] = {0};
++  int offset = 0;
++  if (prefix) {
++    offset = snprintf(buff, sizeof(buff), "%s", prefix);
++  }
++  for (int i=0; i<size && offset < sizeof(buff)-3; ++i) {
++    offset += snprintf(buff + offset, sizeof(buff) - offset, "%02X", data[i]);
++  }
++  __android_log_print(ANDROID_LOG_DEBUG, "YDLidar_SDK", "%s", buff);
++#else
+   if (!data || !size)
+     return;
+   printf(GREEN); //设置绿色
+@@ -153,11 +211,27 @@ inline void debugh(const uint8_t *data, int size, const char* prefix=NULL)
+   printf("\n");
+   printf(COLOFF); //恢复默认颜色
+   fflush(stdout);
++#endif
+ }
+ 
+ //常规（16进制）
+ inline void infoh(const uint8_t *data, int size, const char* prefix=NULL)
+ {
++#ifdef __ANDROID__
++  if (!data || !size)
++      return;
++
++  // Build hex string
++  char buff[2048] = {0};
++  int offset = 0;
++  if (prefix) {
++    offset = snprintf(buff, sizeof(buff), "%s", prefix);
++  }
++  for (int i=0; i<size && offset < sizeof(buff)-3; ++i) {
++    offset += snprintf(buff + offset, sizeof(buff) - offset, "%02X", data[i]);
++  }
++  __android_log_print(ANDROID_LOG_INFO, "YDLidar_SDK", "%s", buff);
++#else
+   if (!data || !size)
+       return;
+   PRINT_TIME
+@@ -168,6 +242,7 @@ inline void infoh(const uint8_t *data, int size, const char* prefix=NULL)
+       printf("%02X", data[i]);
+   printf("\n");
+   fflush(stdout);
++#endif
+ }
+ 
+ /*!
+diff --git a/core/network/CMakeLists.txt b/core/network/CMakeLists.txt
+index a664baa..6930ee2 100644
+--- a/core/network/CMakeLists.txt
++++ b/core/network/CMakeLists.txt
+@@ -5,6 +5,7 @@ add_to_ydlidar_sources(${SRCS})
+ 
+ IF (WIN32)
+ add_to_ydlidar_libraries(setupapi ws2_32)
+-ELSE()
++ELSEIF(NOT ANDROID)
++# Android Bionic includes rt in libc
+ add_to_ydlidar_libraries(rt)
+ ENDIF()                                            
+diff --git a/core/serial/impl/CMakeLists.txt b/core/serial/impl/CMakeLists.txt
+index cae8ed3..5d83a28 100644
+--- a/core/serial/impl/CMakeLists.txt
++++ b/core/serial/impl/CMakeLists.txt
+@@ -1,6 +1,9 @@
+ IF (WIN32)
+ add_subdirectory(windows)
+ include_directories( ${CMAKE_CURRENT_SOURCE_DIR}/windows)
++ELSEIF (ANDROID)
++add_subdirectory(android)
++include_directories( ${CMAKE_CURRENT_SOURCE_DIR}/android)
+ ELSE()
+ add_subdirectory(unix)
+ include_directories( ${CMAKE_CURRENT_SOURCE_DIR}/unix)
+diff --git a/core/serial/impl/android/CMakeLists.txt b/core/serial/impl/android/CMakeLists.txt
+new file mode 100644
+index 0000000..a224b85
+--- /dev/null
++++ b/core/serial/impl/android/CMakeLists.txt
+@@ -0,0 +1,4 @@
++aux_include_directory(. HDRS)
++aux_src_directory(. SRCS)
++add_to_ydlidar_headers(${HDRS})
++add_to_ydlidar_sources(${SRCS})
+diff --git a/core/serial/impl/android/android_jni_serial.cpp b/core/serial/impl/android/android_jni_serial.cpp
+new file mode 100644
+index 0000000..ae2fbbd
+--- /dev/null
++++ b/core/serial/impl/android/android_jni_serial.cpp
+@@ -0,0 +1,544 @@
++#if defined(__ANDROID__)
++
++#include "android_jni_serial.h"
++
++#include <unistd.h>
++#include <cstring>
++#include <android/log.h>
++
++#define LOG_TAG "YDLidarSDK_Serial"
++
++#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
++#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
++#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
++
++namespace ydlidar {
++namespace core {
++namespace serial {
++
++// Global JNI references (cached at initialization)
++extern JavaVM* g_javaVM;  // Declared in jni_bridge.cc
++extern jclass g_usbSerialBridgeClass;
++extern jclass g_bufferedSerialClass;
++extern jmethodID g_openDeviceMethod;
++extern jmethodID g_closeDeviceMethod;
++extern jmethodID g_availableMethod;
++extern jmethodID g_readMethod;
++extern jmethodID g_writeMethod;
++extern jmethodID g_flushMethod;
++
++using serial::Serial;
++
++Serial::SerialImpl::SerialImpl(
++    const std::string &port,
++    unsigned long baudrate,
++    bytesize_t bytesize,
++    parity_t parity,
++    stopbits_t stopbits,
++    flowcontrol_t flowcontrol)
++  : port_(port),
++    is_open_(false),
++    java_port_ref_(nullptr),
++    baudrate_(baudrate),
++    byte_time_ns_(0),
++    parity_(parity),
++    bytesize_(bytesize),
++    stopbits_(stopbits),
++    flowcontrol_(flowcontrol),
++    last_error_(Serial::NoError) {
++
++  // Note: No mutexes needed - CircularByteBuffer in Java is already thread-safe
++
++  // Calculate byte time for timing operations
++  uint32_t bit_time_ns = 1e9 / baudrate_;
++  byte_time_ns_ = bit_time_ns * (1 + bytesize_ + (parity_ != parity_none ? 1 : 0) + stopbits_);
++
++  LOGI("SerialImpl created: port=%s, baud=%lu", port_.c_str(), baudrate_);
++}
++
++Serial::SerialImpl::~SerialImpl() {
++  close();
++  // Note: No mutexes to destroy - Java layer handles thread safety
++}
++
++JNIEnv* Serial::SerialImpl::getJNIEnv() {
++  JNIEnv* env = nullptr;
++
++  if (g_javaVM == nullptr) {
++    LOGE("g_javaVM is null - JNI not initialized");
++    return nullptr;
++  }
++
++  int status = g_javaVM->GetEnv((void**)&env, JNI_VERSION_1_6);
++
++  if (status == JNI_EDETACHED) {
++    // Thread not attached, attach it
++    status = g_javaVM->AttachCurrentThread(&env, nullptr);
++    if (status != JNI_OK) {
++      LOGE("Failed to attach thread to JVM: %d", status);
++      return nullptr;
++    }
++  } else if (status != JNI_OK) {
++    LOGE("Failed to get JNI environment: %d", status);
++    return nullptr;
++  }
++
++  return env;
++}
++
++void Serial::SerialImpl::detachJNIEnv() {
++  // Note: We don't detach here because the thread may be reused
++  // The JVM will automatically detach when the thread exits
++}
++
++bool Serial::SerialImpl::open() {
++  if (is_open_) {
++    LOGW("Port already open: %s", port_.c_str());
++    return true;
++  }
++
++  LOGI("Opening port: %s (baud=%lu, data=%d, stop=%d, parity=%d)",
++       port_.c_str(), baudrate_, bytesize_, stopbits_, parity_);
++
++  JNIEnv* env = getJNIEnv();
++  if (env == nullptr) {
++    LOGE("Failed to get JNI environment");
++    last_error_ = Serial::OpenError;
++    return false;
++  }
++
++  // Check if JNI globals are initialized
++  if (g_usbSerialBridgeClass == nullptr || g_openDeviceMethod == nullptr) {
++    LOGE("JNI not initialized - UsbSerialBridge.nativeInitJNI() not called yet");
++    last_error_ = Serial::OpenError;
++    return false;
++  }
++
++  // Convert parameters to Java format
++  jstring jDeviceId = env->NewStringUTF(port_.c_str());
++  if (jDeviceId == nullptr) {
++    LOGE("Failed to create Java string for device ID");
++    last_error_ = Serial::OpenError;
++    return false;
++  }
++
++  // Map SDK parameters to USB Serial library format
++  int dataBits = static_cast<int>(bytesize_);
++
++  // stopbits: 0=1 bit, 1=1.5 bits, 2=2 bits (USB Serial format)
++  int stopBits = (stopbits_ == stopbits_one) ? 0 :
++                 (stopbits_ == stopbits_two) ? 2 : 1;
++
++  // parity: 0=none, 1=odd, 2=even (mark/space not supported by USB Serial)
++  int parity = (parity_ == parity_none) ? 0 :
++               (parity_ == parity_odd) ? 1 :
++               (parity_ == parity_even) ? 2 : 0;
++
++  // Call UsbSerialBridge.openDevice(deviceId, baudrate, dataBits, stopBits, parity)
++  jobject portObj = env->CallStaticObjectMethod(
++      g_usbSerialBridgeClass,
++      g_openDeviceMethod,
++      jDeviceId,
++      static_cast<jint>(baudrate_),
++      dataBits,
++      stopBits,
++      parity
++  );
++
++  env->DeleteLocalRef(jDeviceId);
++
++  if (portObj == nullptr || env->ExceptionCheck()) {
++    if (env->ExceptionCheck()) {
++      env->ExceptionDescribe();
++      env->ExceptionClear();
++    }
++    LOGE("Failed to open device: %s", port_.c_str());
++    last_error_ = Serial::OpenError;
++    return false;
++  }
++
++  // Convert to global reference (local refs are only valid in this scope)
++  java_port_ref_ = env->NewGlobalRef(portObj);
++  env->DeleteLocalRef(portObj);
++
++  if (java_port_ref_ == nullptr) {
++    LOGE("Failed to create global reference for port object");
++    last_error_ = Serial::OpenError;
++    return false;
++  }
++
++  is_open_ = true;
++  last_error_ = Serial::NoError;
++
++  LOGI("Port opened successfully: %s", port_.c_str());
++  return true;
++}
++
++void Serial::SerialImpl::close() {
++  if (!is_open_) {
++    return;
++  }
++
++  LOGI("Closing port: %s", port_.c_str());
++
++  JNIEnv* env = getJNIEnv();
++  if (env != nullptr && java_port_ref_ != nullptr) {
++    // Call UsbSerialBridge.closeDevice(deviceId) if JNI is initialized
++    if (g_usbSerialBridgeClass != nullptr && g_closeDeviceMethod != nullptr) {
++      jstring jDeviceId = env->NewStringUTF(port_.c_str());
++      if (jDeviceId != nullptr) {
++        env->CallStaticVoidMethod(
++            g_usbSerialBridgeClass,
++            g_closeDeviceMethod,
++            jDeviceId
++        );
++        env->DeleteLocalRef(jDeviceId);
++      }
++    }
++
++    // Release global reference
++    env->DeleteGlobalRef(java_port_ref_);
++    java_port_ref_ = nullptr;
++  }
++
++  is_open_ = false;
++  LOGI("Port closed: %s", port_.c_str());
++}
++
++bool Serial::SerialImpl::isOpen() const {
++  return is_open_;
++}
++
++size_t Serial::SerialImpl::available() {
++  if (!is_open_) {
++    return 0;
++  }
++
++  JNIEnv* env = getJNIEnv();
++  if (env == nullptr || g_availableMethod == nullptr || java_port_ref_ == nullptr) {
++    return 0;
++  }
++
++  // Call bufferedPort.available()
++  jint count = env->CallIntMethod(java_port_ref_, g_availableMethod);
++
++  if (env->ExceptionCheck()) {
++    env->ExceptionDescribe();
++    env->ExceptionClear();
++    return 0;
++  }
++
++  return static_cast<size_t>(count);
++}
++
++size_t Serial::SerialImpl::read(uint8_t *buf, size_t size) {
++  if (!is_open_ || buf == nullptr || size == 0) {
++    return 0;
++  }
++
++  JNIEnv* env = getJNIEnv();
++  if (env == nullptr || g_readMethod == nullptr || java_port_ref_ == nullptr) {
++    return 0;
++  }
++
++  // Create Java byte array
++  jbyteArray jBuf = env->NewByteArray(static_cast<jsize>(size));
++  if (jBuf == nullptr) {
++    LOGE("Failed to allocate Java byte array for read");
++    return 0;
++  }
++
++  // Calculate timeout in milliseconds
++  uint32_t timeout_ms = timeout_.read_timeout_constant +
++                        (timeout_.read_timeout_multiplier * static_cast<uint32_t>(size));
++
++  // Call bufferedPort.read(byteArray, timeout)
++  jint bytesRead = env->CallIntMethod(
++      java_port_ref_,
++      g_readMethod,
++      jBuf,
++      static_cast<jint>(timeout_ms)
++  );
++
++  if (env->ExceptionCheck()) {
++    env->ExceptionDescribe();
++    env->ExceptionClear();
++    env->DeleteLocalRef(jBuf);
++    return 0;
++  }
++
++  if (bytesRead > 0) {
++    // Copy Java bytes to C++ buffer
++    env->GetByteArrayRegion(jBuf, 0, bytesRead, reinterpret_cast<jbyte*>(buf));
++  }
++
++  env->DeleteLocalRef(jBuf);
++
++  return static_cast<size_t>(bytesRead > 0 ? bytesRead : 0);
++}
++
++size_t Serial::SerialImpl::write(const uint8_t *data, size_t length) {
++  if (!is_open_ || data == nullptr || length == 0) {
++    return 0;
++  }
++
++  JNIEnv* env = getJNIEnv();
++  if (env == nullptr || g_writeMethod == nullptr || java_port_ref_ == nullptr) {
++    return 0;
++  }
++
++  // Create Java byte array and copy data
++  jbyteArray jData = env->NewByteArray(static_cast<jsize>(length));
++  if (jData == nullptr) {
++    LOGE("Failed to allocate Java byte array for write");
++    return 0;
++  }
++
++  env->SetByteArrayRegion(jData, 0, static_cast<jsize>(length),
++                          reinterpret_cast<const jbyte*>(data));
++
++  // Calculate timeout
++  uint32_t timeout_ms = timeout_.write_timeout_constant +
++                        (timeout_.write_timeout_multiplier * static_cast<uint32_t>(length));
++
++  // Call bufferedPort.write(byteArray, timeout)
++  env->CallVoidMethod(
++      java_port_ref_,
++      g_writeMethod,
++      jData,
++      static_cast<jint>(timeout_ms)
++  );
++
++  bool success = !env->ExceptionCheck();
++
++  if (!success) {
++    env->ExceptionDescribe();
++    env->ExceptionClear();
++  }
++
++  env->DeleteLocalRef(jData);
++
++  return success ? length : 0;
++}
++
++int Serial::SerialImpl::waitfordata(size_t data_count, uint32_t timeout, size_t *returned_size) {
++  if (!is_open_) {
++    return -2;  // Error: port not open
++  }
++
++  uint64_t start_time = 0;
++  uint64_t elapsed = 0;
++
++  // Get start time (milliseconds)
++  struct timespec ts;
++  clock_gettime(CLOCK_MONOTONIC, &ts);
++  start_time = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
++
++  while (is_open_) {
++    size_t avail = available();
++
++    if (avail >= data_count) {
++      if (returned_size) {
++        *returned_size = avail;
++      }
++      return 0;  // Success: enough data available
++    }
++
++    // Check timeout
++    clock_gettime(CLOCK_MONOTONIC, &ts);
++    uint64_t current_time = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
++    elapsed = current_time - start_time;
++
++    if (elapsed >= timeout) {
++      if (returned_size) {
++        *returned_size = avail;
++      }
++      return -1;  // Timeout
++    }
++
++    // Sleep briefly to avoid busy-waiting (10ms)
++    usleep(10000);
++  }
++
++  return -2;  // Error: port closed during wait
++}
++
++bool Serial::SerialImpl::waitReadable(uint32_t timeout) {
++  size_t dummy;
++  return waitfordata(1, timeout, &dummy) == 0;
++}
++
++void Serial::SerialImpl::waitByteTimes(size_t count) {
++  // Calculate sleep time based on byte transmission time
++  uint32_t sleep_ns = byte_time_ns_ * count;
++
++  struct timespec ts;
++  ts.tv_sec = sleep_ns / 1000000000;
++  ts.tv_nsec = sleep_ns % 1000000000;
++
++  nanosleep(&ts, nullptr);
++}
++
++void Serial::SerialImpl::flush() {
++  flushInput();
++  flushOutput();
++}
++
++void Serial::SerialImpl::flushInput() {
++  if (!is_open_) {
++    return;
++  }
++
++  JNIEnv* env = getJNIEnv();
++  if (env == nullptr || g_flushMethod == nullptr || java_port_ref_ == nullptr) {
++    return;
++  }
++
++  // Call bufferedPort.flush(true, false)
++  env->CallVoidMethod(java_port_ref_, g_flushMethod, JNI_TRUE, JNI_FALSE);
++
++  if (env->ExceptionCheck()) {
++    env->ExceptionClear();
++  }
++}
++
++void Serial::SerialImpl::flushOutput() {
++  if (!is_open_) {
++    return;
++  }
++
++  JNIEnv* env = getJNIEnv();
++  if (env == nullptr || g_flushMethod == nullptr || java_port_ref_ == nullptr) {
++    return;
++  }
++
++  // Call bufferedPort.flush(false, true)
++  env->CallVoidMethod(java_port_ref_, g_flushMethod, JNI_FALSE, JNI_TRUE);
++
++  if (env->ExceptionCheck()) {
++    env->ExceptionClear();
++  }
++}
++
++bool Serial::SerialImpl::setBaudrate(unsigned long baudrate) {
++  baudrate_ = baudrate;
++
++  // Recalculate byte time
++  uint32_t bit_time_ns = 1e9 / baudrate_;
++  byte_time_ns_ = bit_time_ns * (1 + bytesize_ + (parity_ != parity_none ? 1 : 0) + stopbits_);
++
++  // Note: Baud rate change requires reopen on Android
++  // The SDK typically sets this before calling open()
++  return true;
++}
++
++bool Serial::SerialImpl::setStandardBaudRate(unsigned long baudrate) {
++  return setBaudrate(baudrate);
++}
++
++bool Serial::SerialImpl::setCustomBaudRate(unsigned long baudrate) {
++  return setBaudrate(baudrate);
++}
++
++bool Serial::SerialImpl::setBytesize(bytesize_t bytesize) {
++  bytesize_ = bytesize;
++  return true;
++}
++
++bool Serial::SerialImpl::setParity(parity_t parity) {
++  parity_ = parity;
++  return true;
++}
++
++bool Serial::SerialImpl::setStopbits(stopbits_t stopbits) {
++  stopbits_ = stopbits;
++  return true;
++}
++
++bool Serial::SerialImpl::setFlowcontrol(flowcontrol_t flowcontrol) {
++  flowcontrol_ = flowcontrol;
++  return true;
++}
++
++// Control signal stubs (YDLIDAR doesn't use these)
++bool Serial::SerialImpl::setRTS(bool level) { return true; }
++bool Serial::SerialImpl::setDTR(bool level) { return true; }
++bool Serial::SerialImpl::getCTS() { return false; }
++bool Serial::SerialImpl::getDSR() { return false; }
++bool Serial::SerialImpl::getRI() { return false; }
++bool Serial::SerialImpl::getCD() { return false; }
++bool Serial::SerialImpl::waitForChange() { return false; }
++bool Serial::SerialImpl::setBreak(bool level) { return false; }
++void Serial::SerialImpl::sendBreak(int duration) {}
++
++// termios stubs (not used on Android)
++bool Serial::SerialImpl::setTermios(const void *tio) { return true; }
++bool Serial::SerialImpl::getTermios(void *tio) { return true; }
++
++// Getters/setters
++void Serial::SerialImpl::setPort(const std::string &port) {
++  port_ = port;
++}
++
++std::string Serial::SerialImpl::getPort() const {
++  return port_;
++}
++
++void Serial::SerialImpl::setTimeout(Timeout &timeout) {
++  timeout_ = timeout;
++}
++
++Timeout Serial::SerialImpl::getTimeout() const {
++  return timeout_;
++}
++
++unsigned long Serial::SerialImpl::getBaudrate() const {
++  return baudrate_;
++}
++
++bytesize_t Serial::SerialImpl::getBytesize() const {
++  return bytesize_;
++}
++
++parity_t Serial::SerialImpl::getParity() const {
++  return parity_;
++}
++
++stopbits_t Serial::SerialImpl::getStopbits() const {
++  return stopbits_;
++}
++
++flowcontrol_t Serial::SerialImpl::getFlowcontrol() const {
++  return flowcontrol_;
++}
++
++uint32_t Serial::SerialImpl::getByteTime() {
++  return byte_time_ns_;
++}
++
++Serial::SerialPortError Serial::SerialImpl::getSystemError(int systemErrorCode) const {
++  return last_error_;
++}
++
++// Thread safety (no-ops on Android - Java layer is thread-safe)
++int Serial::SerialImpl::readLock() {
++  return 0;  // Success - Java CircularByteBuffer handles locking
++}
++
++int Serial::SerialImpl::readUnlock() {
++  return 0;  // Success
++}
++
++int Serial::SerialImpl::writeLock() {
++  return 0;  // Success - Java CircularByteBuffer handles locking
++}
++
++int Serial::SerialImpl::writeUnlock() {
++  return 0;  // Success
++}
++
++}  // namespace serial
++}  // namespace core
++}  // namespace ydlidar
++
++#endif  // __ANDROID__
+diff --git a/core/serial/impl/android/android_jni_serial.h b/core/serial/impl/android/android_jni_serial.h
+new file mode 100644
+index 0000000..40747c3
+--- /dev/null
++++ b/core/serial/impl/android/android_jni_serial.h
+@@ -0,0 +1,166 @@
++#if defined(__ANDROID__)
++
++#ifndef SERIAL_IMPL_ANDROID_JNI_H
++#define SERIAL_IMPL_ANDROID_JNI_H
++
++#include <jni.h>
++#include <pthread.h>
++#include <string>
++#include <core/serial/serial.h>
++
++namespace ydlidar {
++namespace core {
++namespace serial {
++
++/**
++ * Android JNI-based serial implementation for YDLIDAR SDK.
++ *
++ * This implementation routes all serial operations through JNI to Java's
++ * BufferedUsbSerialPort class, which uses mik3y/usb-serial-for-android
++ * to communicate with USB serial devices without kernel drivers.
++ *
++ * Architecture:
++ *   Serial::SerialImpl (this class)
++ *        ↓ JNI calls
++ *   UsbSerialBridge.kt
++ *        ↓
++ *   BufferedUsbSerialPort.kt (background reader + CircularByteBuffer)
++ *        ↓
++ *   UsbSerialPort (mik3y library)
++ *        ↓
++ *   Android USB Host API
++ *
++ * Key Operations:
++ *   - open()       → UsbSerialBridge.openDevice() → returns BufferedUsbSerialPort
++ *   - available()  → bufferedPort.available() (queries CircularByteBuffer)
++ *   - read()       → bufferedPort.read() (reads from CircularByteBuffer with timeout)
++ *   - write()      → bufferedPort.write() (direct USB write)
++ *   - flush()      → bufferedPort.flush() (clear buffer + purge USB buffers)
++ *
++ * Thread Safety:
++ *   - pthread_mutex protects read/write operations (matching unix_serial.cpp)
++ *   - JNI environment is thread-local (AttachCurrentThread per thread)
++ *
++ * Object Lifetime:
++ *   - Java BufferedUsbSerialPort reference is stored as global ref
++ *   - Global ref is released in close() to allow GC
++ */
++class Serial::SerialImpl {
++ public:
++  /**
++   * Constructor
++   *
++   * @param port Device identifier (e.g., "lidar_dev_bus_001_device_003")
++   * @param baudrate Baud rate (e.g., 512000 for YDLIDAR TG15)
++   * @param bytesize Data bits (5/6/7/8)
++   * @param parity Parity (none/odd/even/mark/space)
++   * @param stopbits Stop bits (1/1.5/2)
++   * @param flowcontrol Flow control (none/software/hardware)
++   */
++  explicit SerialImpl(const std::string &port,
++                      unsigned long baudrate,
++                      bytesize_t bytesize,
++                      parity_t parity,
++                      stopbits_t stopbits,
++                      flowcontrol_t flowcontrol);
++
++  virtual ~SerialImpl();
++
++  // Core I/O operations (MUST IMPLEMENT)
++  bool open();
++  void close();
++  bool isOpen() const;
++  size_t available();
++  size_t read(uint8_t *buf, size_t size);
++  size_t write(const uint8_t *data, size_t length);
++
++  // Timeout operations (IMPORTANT for YDLIDAR)
++  int waitfordata(size_t data_count, uint32_t timeout, size_t *returned_size);
++  bool waitReadable(uint32_t timeout);
++  void waitByteTimes(size_t count);
++
++  // Configuration operations (MUST IMPLEMENT)
++  bool setBaudrate(unsigned long baudrate);
++  bool setBytesize(bytesize_t bytesize);
++  bool setParity(parity_t parity);
++  bool setStopbits(stopbits_t stopbits);
++
++  // Buffer operations (MUST IMPLEMENT)
++  void flush();
++  void flushInput();
++  void flushOutput();
++
++  // Control signals (OPTIONAL - YDLIDAR doesn't use hardware flow control)
++  bool setFlowcontrol(flowcontrol_t flowcontrol);
++  bool setRTS(bool level);
++  bool setDTR(bool level);
++  bool getCTS();
++  bool getDSR();
++  bool getRI();
++  bool getCD();
++  bool waitForChange();
++  bool setBreak(bool level);
++  void sendBreak(int duration);
++
++  // Standard baud rate methods (used by SDK)
++  bool setStandardBaudRate(unsigned long baudrate);
++  bool setCustomBaudRate(unsigned long baudrate);
++
++  // Getters/setters
++  void setPort(const std::string &port);
++  std::string getPort() const;
++  void setTimeout(Timeout &timeout);
++  Timeout getTimeout() const;
++  unsigned long getBaudrate() const;
++  bytesize_t getBytesize() const;
++  parity_t getParity() const;
++  stopbits_t getStopbits() const;
++  flowcontrol_t getFlowcontrol() const;
++  uint32_t getByteTime();
++  Serial::SerialPortError getSystemError(int systemErrorCode) const;
++
++  // termios operations (not used on Android, return success)
++  bool setTermios(const void *tio);
++  bool getTermios(void *tio);
++
++  // Thread safety (locks for read/write operations)
++  int readLock();
++  int readUnlock();
++  int writeLock();
++  int writeUnlock();
++
++ private:
++  // Device information
++  std::string port_;           // Device identifier (e.g., "lidar_dev_bus_001_device_003")
++  bool is_open_;
++
++  // Java object reference (BufferedUsbSerialPort instance)
++  jobject java_port_ref_;      // Global reference to BufferedUsbSerialPort
++
++  // Serial configuration
++  Timeout timeout_;            // Read/write timeout settings
++  unsigned long baudrate_;     // Baud rate
++  uint32_t byte_time_ns_;      // Time to transmit/receive one byte (nanoseconds)
++
++  parity_t parity_;            // Parity setting
++  bytesize_t bytesize_;        // Data bits (5/6/7/8)
++  stopbits_t stopbits_;        // Stop bits
++  flowcontrol_t flowcontrol_;  // Flow control
++
++  // Note: No mutexes needed - Java CircularByteBuffer is thread-safe
++
++  // JNI environment helpers
++  JNIEnv* getJNIEnv();
++  void detachJNIEnv();
++
++  // Error tracking
++  mutable Serial::SerialPortError last_error_;
++};
++
++}  // namespace serial
++}  // namespace core
++}  // namespace ydlidar
++
++#endif // SERIAL_IMPL_ANDROID_JNI_H
++
++#endif // __ANDROID__

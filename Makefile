@@ -57,6 +57,8 @@ $(DEPS_STAMP): ros.repos
 	git submodule update
 	@echo "==> Fetching ROS 2 dependencies via vcs..."
 	vcs import --input ros.repos $(DEPS_DIR)/
+	@echo "==> Applying Android patches for YDLidar SDK..."
+	cd $(DEPS_DIR)/ydlidar_sdk && patch -p1 < $(CURDIR)/android_patches/ydlidar_sdk_android_support.patch || true
 	@echo "==> Fetching ros2_android_perception dependencies..."
 	cd $(DEPS_DIR)/ros2_android_perception && $(MAKE) deps
 	@touch $(DEPS_STAMP)
