@@ -31,7 +31,7 @@ namespace ros2_android
     std::string reid_bin = models_path_ + "/osnet_ain_x1_0.ncnn.bin";
 
     detector_ = std::make_unique<perception::ObjectDetectionController>(
-        yolo_param, yolo_bin, reid_param, reid_bin, false);
+        yolo_param, yolo_bin, reid_param, reid_bin);
 
     if (!detector_->IsReady())
     {
