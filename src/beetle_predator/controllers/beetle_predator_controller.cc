@@ -44,9 +44,7 @@ namespace ros2_android
     }
 
     // Set up publisher topic
-    std::string device_id = ros_.GetDeviceId();
-    std::string topic = "/" + device_id + "/beetle_predator/detection";
-    detection_pub_.SetTopic(topic.c_str());
+    detection_pub_.SetTopic("cpb_predator/detection");
   }
 
   BeetlePredatorController::~BeetlePredatorController()

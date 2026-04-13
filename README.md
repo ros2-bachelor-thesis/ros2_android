@@ -103,7 +103,7 @@ Target: Android 13 (API 33), NDK 26.3.
 │   - Other ROS 2 nodes on host machine                       │
 │   - Topics: /<device_id>/sensors/*, /<device_id>/camera/*,  │
 │     /scan, /cpb_*, /arm_position_*, /PointNShoot,           │
-│     /<device_id>/beetle_predator/detection                   │
+│     /cpb_predator/detection                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -160,10 +160,9 @@ The app publishes the following topics that can be discovered and consumed by ot
 
 **Beetle Predator (handheld detection):**
 
-- `/<device_id>/beetle_predator/detection` - `vermin_collector_ros_msgs/BeetleDetection` - geolocated pest detection (GPS + 2D bbox + class label + track ID)
+- `/cpb_predator/detection` - `vermin_collector_ros_msgs/BeetleDetection` - geolocated pest detection (GPS + 2D bbox + class label + track ID)
 
-> [!NOTE]
-> `<device_id>` is configurable in the app's ROS Setup screen and defaults to the device's sanitized name (e.g., `pixel_7`, `galaxy_s23`). This namespace allows multiple Android devices to publish on the same ROS 2 network without topic collisions.
+> [!NOTE] > `<device_id>` is configurable in the app's ROS Setup screen and defaults to the device's sanitized name (e.g., `pixel_7`, `galaxy_s23`). This namespace allows multiple Android devices to publish on the same ROS 2 network without topic collisions.
 
 All published messages include a `frame_id` field in the header (e.g., `"<device_id>_camera_front"`, `"<device_id>_imu_link"`) and a timestamp indicating when the data was captured. This allows other ROS 2 nodes to transform the data between coordinate frames and temporally synchronize multiple sensors using ROS 2's TF (Transform) system.
 
