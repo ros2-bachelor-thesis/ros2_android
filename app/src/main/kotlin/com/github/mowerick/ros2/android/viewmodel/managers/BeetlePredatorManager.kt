@@ -92,6 +92,10 @@ class BeetlePredatorManager(
             try {
                 NativeBridge.disableBeetlePredator()
 
+                // Stop GPS when beetle predator is disabled
+                Log.i(TAG, "Stopping GPS for Beetle Predator")
+                gpsManager.stop()
+
                 withContext(Dispatchers.Main) {
                     _state.value = _state.value.copy(
                         enabled = false,

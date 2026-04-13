@@ -200,7 +200,8 @@ class RosViewModel(
                 }
             },
             onDisable = {
-                Log.i("RosViewModel", "GPS sensor disabled - publishing stopped")
+                Log.i("RosViewModel", "GPS sensor disabled - stopping GPS manager")
+                gpsManager.stop()
             }
         )
     }
