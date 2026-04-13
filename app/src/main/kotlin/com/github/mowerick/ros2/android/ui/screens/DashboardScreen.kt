@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Cable
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.RemoveRedEye
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
@@ -41,7 +42,8 @@ fun DashboardScreen(
     onSettingsClick: () -> Unit,
     onBuiltInSensorsClick: () -> Unit,
     onExternalSensorsClick: () -> Unit,
-    onSubsystemClick: () -> Unit
+    onSubsystemClick: () -> Unit,
+    onBeetlePredatorClick: () -> Unit = {}
 ) {
     val titleText = if (rosDomainId >= 0) "Dashboard (ID: $rosDomainId)" else "Dashboard (ID: --)"
 
@@ -127,6 +129,16 @@ fun DashboardScreen(
                                else "Start ROS to access subsystem",
                     enabled = rosStarted,
                     onClick = onSubsystemClick
+                )
+            }
+            item {
+                SectionCard(
+                    icon = Icons.Filled.BugReport,
+                    title = "Beetle Predator",
+                    subtitle = if (rosStarted) "Camera + GPS pest detection"
+                               else "Start ROS to access",
+                    enabled = rosStarted,
+                    onClick = onBeetlePredatorClick
                 )
             }
         }

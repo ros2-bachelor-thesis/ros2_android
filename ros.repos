@@ -125,3 +125,7 @@ repositories:
     type: git
     url: git@github.com:ros2-bachelor-thesis/ros2_android_perception.git
     version: main
+  vermin_collector_ros_msgs:
+    type: git
+    url: ssh://vcs@phabricator.ict.tuwien.ac.at/source/Vermin_Collector_ROS_Msgs.git
+    version: master

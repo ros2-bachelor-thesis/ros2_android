@@ -24,6 +24,7 @@ import com.github.mowerick.ros2.android.model.PipelineState
 import com.github.mowerick.ros2.android.model.SensorInfo
 import com.github.mowerick.ros2.android.model.SensorReading
 import com.github.mowerick.ros2.android.model.Severity
+import com.github.mowerick.ros2.android.viewmodel.managers.BeetlePredatorManager
 import com.github.mowerick.ros2.android.viewmodel.managers.ExternalDeviceManager
 import com.github.mowerick.ros2.android.viewmodel.managers.NavigationManager
 import com.github.mowerick.ros2.android.viewmodel.managers.PerceptionManager
@@ -49,6 +50,7 @@ sealed class Screen {
     data class NodeDetail(val nodeId: String) : Screen()
     data object CommandBridge : Screen()
     data object DebugVisualizationFullscreen : Screen()
+    data object BeetlePredator : Screen()
 }
 
 class RosViewModel(
@@ -82,6 +84,15 @@ class RosViewModel(
     private val gpsManager = GpsManager(applicationContext)
     private var isLocationServiceEnabled = true
 
+    // Beetle Predator
+    private val beetlePredatorManager = BeetlePredatorManager(
+        applicationContext,
+        viewModelScope,
+        gpsManager,
+        { permissionHandler.getLocationSettingsLauncher() },
+        { message -> addNotification(message, Severity.ERROR) }
+    )
+
     // Notifications (stays here - central coordination point)
     private val _notifications = MutableStateFlow<List<NativeNotification>>(emptyList())
     val notifications: StateFlow<List<NativeNotification>> = _notifications
@@ -105,6 +116,8 @@ class RosViewModel(
     val perceptionState: StateFlow<PerceptionManager.PerceptionState> = perceptionManager.perceptionState
     val debugFrameRgb: StateFlow<Bitmap?> = perceptionManager.debugFrameRgb
     val debugFrameDepth: StateFlow<Bitmap?> = perceptionManager.debugFrameDepth
+    val beetlePredatorState: StateFlow<BeetlePredatorManager.BeetlePredatorState> = beetlePredatorManager.state
+    val beetlePredatorDebugFrame: StateFlow<Bitmap?> = beetlePredatorManager.debugFrame
 
     init {
         // Initialize USB Serial manager for LIDAR communication
@@ -144,6 +157,9 @@ class RosViewModel(
                 if ((currentScreen is Screen.NodeDetail && currentScreen.nodeId == "object_detection") ||
                      currentScreen is Screen.DebugVisualizationFullscreen) {
                     perceptionManager.updateDebugFrame(frameId)
+                }
+                if (currentScreen is Screen.BeetlePredator && frameId == "beetle_predator_rgb") {
+                    beetlePredatorManager.updateDebugFrame()
                 }
             }
         }
@@ -234,6 +250,7 @@ class RosViewModel(
     fun navigateToNode(node: PipelineNode) = navigationManager.navigateToNode(node)
     fun navigateToCommandBridge() = navigationManager.navigateToCommandBridge()
     fun navigateToDebugFullscreen() = navigationManager.navigateToDebugFullscreen()
+    fun navigateToBeetlePredator() = navigationManager.navigateToBeetlePredator()
 
     fun navigateBack() {
         when (screen.value) {
@@ -343,6 +360,11 @@ class RosViewModel(
 
     fun enableVisualization() = perceptionManager.enableVisualization()
     fun disableVisualization() = perceptionManager.disableVisualization()
+
+    // -- Beetle Predator --
+    fun enableBeetlePredator() = beetlePredatorManager.enable()
+    fun disableBeetlePredator() = beetlePredatorManager.disable()
+    fun toggleBeetlePredatorLabel(label: String) = beetlePredatorManager.toggleLabel(label)
 
     override fun onCleared() {
         super.onCleared()

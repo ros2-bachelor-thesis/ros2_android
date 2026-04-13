@@ -65,6 +65,10 @@ class NavigationManager(initialScreen: Screen = Screen.Dashboard) {
         navigateTo(Screen.DebugVisualizationFullscreen)
     }
 
+    fun navigateToBeetlePredator() {
+        navigateTo(Screen.BeetlePredator)
+    }
+
     fun navigateBack() {
         if (navigationStack.size > 1) {
             navigationStack.removeLast()

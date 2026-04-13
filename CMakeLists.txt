@@ -60,6 +60,7 @@ ExternalProject_Add(ros_for_android
   deps-rclcpp_lifecycle
   deps-std_msgs
   deps-sensor_msgs
+  deps-vermin_collector_ros_msgs
   deps-libyuv
   deps-ros2_android_perception
   CMAKE_ARGS

@@ -14,12 +14,6 @@ namespace ros2_android
                                              float altitude_accuracy,
                                              int64_t timestamp_ns)
   {
-    if (!location_callback_)
-    {
-      // No subscriber yet, silently drop
-      return;
-    }
-
     sensor_msgs::msg::NavSatFix msg;
 
     // Convert Android hardware timestamp (nanoseconds since boot) to ROS epoch time
@@ -62,7 +56,28 @@ namespace ros2_android
     LOGI("GPS Update: lat=%.6f, lon=%.6f, alt=%.2f, acc=%.2fm", latitude,
          longitude, altitude, accuracy);
 
-    location_callback_(msg);
+    // Cache for GetLastLocation() consumers (always cache, even without callback)
+    {
+      std::lock_guard<std::mutex> lock(location_mutex_);
+      last_location_ = msg;
+      has_location_ = true;
+    }
+
+    if (location_callback_)
+    {
+      location_callback_(msg);
+    }
+  }
+
+  bool GpsLocationProvider::GetLastLocation(sensor_msgs::msg::NavSatFix& out)
+  {
+    std::lock_guard<std::mutex> lock(location_mutex_);
+    if (!has_location_)
+    {
+      return false;
+    }
+    out = last_location_;
+    return true;
   }
 
 } // namespace ros2_android

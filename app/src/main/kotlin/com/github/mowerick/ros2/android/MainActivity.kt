@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.mowerick.ros2.android.ui.components.NotificationOverlay
+import com.github.mowerick.ros2.android.ui.screens.BeetlePredatorScreen
 import com.github.mowerick.ros2.android.ui.screens.BuiltInSensorsScreen
 import com.github.mowerick.ros2.android.ui.screens.CameraDetailScreen
 import com.github.mowerick.ros2.android.ui.screens.DashboardScreen
@@ -255,6 +256,8 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                 val perceptionState by vm.perceptionState.collectAsState()
                 val debugFrameRgb by vm.debugFrameRgb.collectAsState()
                 val debugFrameDepth by vm.debugFrameDepth.collectAsState()
+                val beetlePredatorState by vm.beetlePredatorState.collectAsState()
+                val beetlePredatorDebugFrame by vm.beetlePredatorDebugFrame.collectAsState()
 
                 // Handle orientation changes based on screen
                 LaunchedEffect(screen) {
@@ -285,7 +288,8 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                         onSettingsClick = { vm.navigateToRosSetup() },
                         onBuiltInSensorsClick = { vm.navigateToBuiltInSensors() },
                         onExternalSensorsClick = { vm.navigateToExternalSensors() },
-                        onSubsystemClick = { vm.navigateToSubsystem() }
+                        onSubsystemClick = { vm.navigateToSubsystem() },
+                        onBeetlePredatorClick = { vm.navigateToBeetlePredator() }
                     )
                     is Screen.RosSetup -> RosSetupScreen(
                         rosStarted = rosStarted,
@@ -430,6 +434,16 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                             debugFrameRgb = debugFrameRgb,
                             debugFrameDepth = debugFrameDepth,
                             onBack = { vm.navigateBack() }
+                        )
+                    }
+                    is Screen.BeetlePredator -> {
+                        BeetlePredatorScreen(
+                            state = beetlePredatorState,
+                            debugFrame = beetlePredatorDebugFrame,
+                            onBack = { vm.navigateBack() },
+                            onEnable = { vm.enableBeetlePredator() },
+                            onDisable = { vm.disableBeetlePredator() },
+                            onToggleLabel = { label -> vm.toggleBeetlePredatorLabel(label) }
                         )
                     }
                 }

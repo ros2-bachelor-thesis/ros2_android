@@ -74,6 +74,15 @@ object NativeBridge {
     external fun nativeGetDebugFrame(frameId: String): Bitmap?
     external fun nativeSetDebugFrameCallback()
 
+    // Beetle Predator (built-in camera + GPS + NCNN detection)
+    external fun enableBeetlePredator(modelsPath: String)
+    external fun disableBeetlePredator()
+    external fun isBeetlePredatorEnabled(): Boolean
+    external fun setBeetlePredatorLabelFilter(mask: Int)
+    external fun enableBeetlePredatorVisualization(enable: Boolean)
+    external fun getBeetlePredatorDebugFrame(): Bitmap?
+    external fun getBeetlePredatorDetectionCount(): Int
+
     fun setNotificationCallback(callback: (severity: String, message: String) -> Unit) {
         notificationCallback = callback
         nativeSetNotificationCallback()

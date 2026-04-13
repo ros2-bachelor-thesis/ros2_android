@@ -7,6 +7,7 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(vermin_collector_ros_msgs REQUIRED)
 
 # Find libyuv
 find_path(LIBYUV_INCLUDE_DIR libyuv.h)
@@ -88,6 +89,9 @@ add_library(android-ros SHARED
   # Perception controller (NCNN ML pipeline)
   perception/controllers/perception_controller.cc
 
+  # Beetle Predator controller (built-in camera + GPS + NCNN detection)
+  beetle_predator/controllers/beetle_predator_controller.cc
+
   # Targeting controller (laser positioning)
   targeting/controllers/target_manager_controller.cc
 
@@ -103,6 +107,7 @@ target_link_libraries(android-ros PRIVATE
     rclcpp::rclcpp
     ${geometry_msgs_TARGETS}
     ${sensor_msgs_TARGETS}
+    ${vermin_collector_ros_msgs_TARGETS}
     ${LIBYUV_LIBRARY}
     ${TURBOJPEG_LIBRARY}
     ${YDLIDAR_LIBRARY}

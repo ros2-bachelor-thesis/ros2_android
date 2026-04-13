@@ -25,6 +25,7 @@
 #include "jni/jvm.h"
 #include "lidar/controllers/lidar_controller.h"
 #include "lidar/impl/ydlidar_device.h"
+#include "beetle_predator/controllers/beetle_predator_controller.h"
 #include "perception/controllers/perception_controller.h"
 #include "arm_commander/controllers/arm_commander_controller.h"
 #include "targeting/controllers/target_manager_controller.h"
@@ -256,6 +257,18 @@ public:
       }
       target_manager_controller_.reset();
       LOGI("Cleanup: Target manager controller cleared");
+    }
+
+    // Clear beetle predator controller
+    if (beetle_predator_controller_)
+    {
+      LOGI("Cleanup: Disabling beetle predator controller");
+      if (beetle_predator_controller_->IsEnabled())
+      {
+        beetle_predator_controller_->Disable();
+      }
+      beetle_predator_controller_.reset();
+      LOGI("Cleanup: Beetle predator controller cleared");
     }
 
     // IMPORTANT: Shutdown sensors BEFORE destructor to join threads cleanly
@@ -595,6 +608,9 @@ public:
   std::unique_ptr<ros2_android::PerceptionController> perception_controller_;
   std::unique_ptr<ros2_android::TargetManagerController> target_manager_controller_;
   std::unique_ptr<ros2_android::ArmCommanderController> arm_commander_controller_;
+
+  // Beetle Predator (built-in camera + GPS + NCNN detection)
+  std::unique_ptr<ros2_android::BeetlePredatorController> beetle_predator_controller_;
 };
 
 static std::unique_ptr<AndroidApp> g_app;
@@ -1679,6 +1695,203 @@ extern "C"
     }
 
     return g_app->arm_commander_controller_->IsEnabled() ? JNI_TRUE : JNI_FALSE;
+  }
+
+  // ============================================================================
+  // Beetle Predator JNI Functions
+  // ============================================================================
+
+  JNIEXPORT void JNICALL
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_enableBeetlePredator(
+      JNIEnv *env, jclass /*clazz*/, jstring models_path)
+  {
+    if (!g_app)
+    {
+      LOGE("enableBeetlePredator: g_app is null");
+      return;
+    }
+
+    if (!g_app->ros_ || !g_app->ros_->Initialized())
+    {
+      LOGE("enableBeetlePredator: ROS not initialized");
+      return;
+    }
+
+    const char *models_path_c = env->GetStringUTFChars(models_path, nullptr);
+    LOGI("enableBeetlePredator: models_path=%s", models_path_c);
+
+    if (!g_app->beetle_predator_controller_)
+    {
+      // Find rear camera controller
+      ros2_android::CameraController* rear_camera = nullptr;
+      for (auto& cc : g_app->camera_controllers_)
+      {
+        if (!cc->IsFrontFacing())
+        {
+          rear_camera = cc.get();
+          break;
+        }
+      }
+
+      if (!rear_camera)
+      {
+        LOGE("enableBeetlePredator: No rear camera found");
+        ros2_android::PostNotification(
+            ros2_android::NotificationSeverity::ERROR,
+            "Beetle Predator: No rear camera available");
+        env->ReleaseStringUTFChars(models_path, models_path_c);
+        return;
+      }
+
+      g_app->beetle_predator_controller_ =
+          std::make_unique<ros2_android::BeetlePredatorController>(
+              g_app->ros_.value(),
+              std::string(models_path_c),
+              rear_camera,
+              g_app->gps_provider_.get());
+
+      if (!g_app->beetle_predator_controller_->IsReady())
+      {
+        LOGE("enableBeetlePredator: Failed to initialize controller");
+        g_app->beetle_predator_controller_.reset();
+        env->ReleaseStringUTFChars(models_path, models_path_c);
+        return;
+      }
+    }
+
+    g_app->beetle_predator_controller_->Enable();
+    LOGI("enableBeetlePredator: Beetle Predator enabled");
+
+    env->ReleaseStringUTFChars(models_path, models_path_c);
+  }
+
+  JNIEXPORT void JNICALL
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_disableBeetlePredator(
+      JNIEnv * /*env*/, jclass /*clazz*/)
+  {
+    if (!g_app)
+    {
+      LOGE("disableBeetlePredator: g_app is null");
+      return;
+    }
+
+    if (g_app->beetle_predator_controller_)
+    {
+      LOGI("disableBeetlePredator: Disabling Beetle Predator");
+      g_app->beetle_predator_controller_->Disable();
+    }
+  }
+
+  JNIEXPORT jboolean JNICALL
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_isBeetlePredatorEnabled(
+      JNIEnv * /*env*/, jclass /*clazz*/)
+  {
+    if (!g_app || !g_app->beetle_predator_controller_)
+    {
+      return JNI_FALSE;
+    }
+    return g_app->beetle_predator_controller_->IsEnabled() ? JNI_TRUE : JNI_FALSE;
+  }
+
+  JNIEXPORT void JNICALL
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_setBeetlePredatorLabelFilter(
+      JNIEnv * /*env*/, jclass /*clazz*/, jint mask)
+  {
+    if (!g_app || !g_app->beetle_predator_controller_)
+    {
+      return;
+    }
+    g_app->beetle_predator_controller_->SetLabelFilter(static_cast<uint8_t>(mask));
+    LOGI("setBeetlePredatorLabelFilter: mask=0x%02x", mask);
+  }
+
+  JNIEXPORT void JNICALL
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_enableBeetlePredatorVisualization(
+      JNIEnv * /*env*/, jclass /*clazz*/, jboolean enable)
+  {
+    if (!g_app || !g_app->beetle_predator_controller_)
+    {
+      return;
+    }
+    g_app->beetle_predator_controller_->EnableVisualization(enable == JNI_TRUE);
+  }
+
+  JNIEXPORT jobject JNICALL
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_getBeetlePredatorDebugFrame(
+      JNIEnv *env, jclass /*clazz*/)
+  {
+    if (!g_app || !g_app->beetle_predator_controller_)
+    {
+      return nullptr;
+    }
+
+    std::vector<uint8_t> jpeg_data;
+    if (!g_app->beetle_predator_controller_->GetDebugFrame("beetle_predator_rgb", jpeg_data))
+    {
+      return nullptr;
+    }
+
+    if (jpeg_data.empty())
+    {
+      return nullptr;
+    }
+
+    // Decompress JPEG to create Android Bitmap
+    tjhandle decompressor = tjInitDecompress();
+    if (!decompressor)
+    {
+      LOGE("Failed to init TurboJPEG for beetle predator debug frame");
+      return nullptr;
+    }
+
+    int width, height, jpegSubsamp, jpegColorspace;
+    int tj_result = tjDecompressHeader3(
+        decompressor,
+        jpeg_data.data(),
+        jpeg_data.size(),
+        &width,
+        &height,
+        &jpegSubsamp,
+        &jpegColorspace);
+
+    if (tj_result != 0)
+    {
+      tjDestroy(decompressor);
+      return nullptr;
+    }
+
+    std::vector<uint8_t> rgba_buffer(width * height * 4);
+
+    tj_result = tjDecompress2(
+        decompressor,
+        jpeg_data.data(),
+        jpeg_data.size(),
+        rgba_buffer.data(),
+        width,
+        0,
+        height,
+        TJPF_RGBA,
+        TJFLAG_FASTDCT);
+
+    tjDestroy(decompressor);
+
+    if (tj_result != 0)
+    {
+      return nullptr;
+    }
+
+    return ros2_android::jni::CreateBitmapFromRGB(env, rgba_buffer.data(), width, height);
+  }
+
+  JNIEXPORT jint JNICALL
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_getBeetlePredatorDetectionCount(
+      JNIEnv * /*env*/, jclass /*clazz*/)
+  {
+    if (!g_app || !g_app->beetle_predator_controller_)
+    {
+      return 0;
+    }
+    return g_app->beetle_predator_controller_->GetNewDetectionCount();
   }
 
 } // extern "C"
