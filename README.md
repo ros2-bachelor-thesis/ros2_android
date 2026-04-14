@@ -20,14 +20,19 @@ Target: Android 13 (API 33), NDK 26.3.
 - **Jetpack Compose UI** - sensor list, live sensor data view, camera preview, pipeline node management with runtime state visualization
 - **Testing framework** - Python-based ROS 2 subscriber test suite with matplotlib visualizers for all sensor types
 - **Beetle Predator mode** - handheld pest detection using built-in rear camera + GPS. Runs NCNN YOLOv9 + Deep SORT on camera frames, publishes geolocated detections as `vermin_collector_ros_msgs/BeetleDetection` with novelty filtering (only new confirmed tracks). User selects which classes (beetle, larva, eggs) trigger publishing via label filter chips
-- **Target manager** - CPB egg selection with IMU-based orientation calibration, subscribes to detection results and ZED IMU, publishes pan/tilt goals for the arm commander
-- **Arm commander** - pan/tilt arm control with ACK/NACK protocol and state machine (IDLE - AWAITING_ACK - AWAITING_DONE - WAIT_AFTER_DONE), subscribes to position goals, publishes `/PointNShoot` commands for micro-ROS
+- **Target manager** - CPB egg selection with IMU-based orientation calibration, subscribes to detection results and ZED IMU, publishes pan/tilt goals for the arm commander *(subject to change)*
+- **Arm commander** - pan/tilt arm control with ACK/NACK protocol and state machine (IDLE - AWAITING_ACK - AWAITING_DONE - WAIT_AFTER_DONE), subscribes to position goals, publishes `/PointNShoot` commands for micro-ROS *(subject to change)*
 
 ### Planned (Not Yet Implemented)
 
 - **DDS-Security** - OpenSSL static linking (hidden visibility to avoid BoringSSL collision), Cyclone DDS security plugins, SROS2 credentials
-- **USB camera** - external USB cameras via libusb/libuvc with JNI file descriptor handoff, published as `sensor_msgs/Image`
 - **micro-ROS Agent** - hosting the agent on Android to bridge ROS 2 DDS to microcontrollers via serial/USB
+
+### Known Limitations
+
+- **Large DDS payloads over WiFi** - transporting depth images (~8MB) and PointCloud2 (~33MB) from the external ZED camera over WiFi is partially functional but unreliable. A 33MB PointCloud2 is split into ~25,000 RTPS fragments - at just 0.1% WiFi packet loss, the probability of all fragments arriving is effectively zero. With RELIABLE QoS, retransmission helps but creates congestion; with BEST_EFFORT, any single lost fragment discards the entire message. Compressed RGB images (~50-200KB) work reliably. Requires rooted device for kernel buffer tuning. See [DDS Large Payload Limitations](../docs/DDS_LARGE_PAYLOAD_LIMITATIONS.md) for full analysis.
+- **Temporal desynchronization** - RGB, depth, and PointCloud2 topics arrive at vastly different rates over WiFi due to size differences. The perception controller pairs the latest available message from each topic without timestamp synchronization, resulting in mismatched frames for 3D localization.
+- **No shared memory** - Android's Bionic libc lacks `shm_open`/`shm_unlink`, restricting DDS to UDP transport only. The ZED camera requires CUDA and must run on an external desktop, forcing all camera data across the WiFi network.
 
 ## Architecture
 
@@ -221,7 +226,10 @@ TARGET_RUNNING → COMMAND_ACTIVE
 - Feature dimension: 128-D appearance features for tracking
 - Inference backend: NCNN (Tencent) optimized for ARM NEON
 
-### Target Manager Node
+### Target Manager Node *(subject to change)*
+
+> [!NOTE]
+> The target manager and arm commander are implemented but subject to change. They are excluded from the thesis scope.
 
 Selects CPB egg targets for laser engagement, compensating for camera-to-laser physical offsets and device orientation via ZED IMU data.
 
@@ -238,7 +246,7 @@ Selects CPB egg targets for laser engagement, compensating for camera-to-laser p
 
 - `/arm_position_goal` - `std_msgs/Float32MultiArray` - computed pan/tilt angles for arm commander
 
-### Arm Commander Node
+### Arm Commander Node *(subject to change)*
 
 Manages the pan/tilt arm command protocol with the microcontroller via micro-ROS. Implements a state machine with timeout-based retransmission and NACK handling.
 

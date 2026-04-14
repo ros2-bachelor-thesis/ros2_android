@@ -151,10 +151,10 @@ void PerceptionController::Enable()
     return;
   }
 
-  // Reliable QoS to match ZED publisher QoS - a best_effort subscriber cannot
-  // receive from a reliable publisher (DDS QoS compatibility rule). KeepLast(10)
-  // provides buffer depth for large messages (33MB PointCloud2) that take
-  // significant time to reassemble from RTPS fragments over WiFi.
+  // Reliable QoS required for large messages over WiFi - best_effort disables
+  // RTPS fragment retransmission, so any lost fragment discards the entire
+  // sample (impossible for 33MB PointCloud2 with ~25k fragments). KeepLast(10)
+  // provides buffer depth for concurrent RTPS fragment reassembly.
   auto qos = rclcpp::QoS(rclcpp::KeepLast(10))
                  .reliable()
                  .durability_volatile();
