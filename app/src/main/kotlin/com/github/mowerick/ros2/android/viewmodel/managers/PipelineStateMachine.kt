@@ -377,15 +377,15 @@ class PipelineStateMachine(
             PipelineNode(
                 id = "target_manager",
                 name = "Target Manager",
-                description = "Selects primary targets (CPB eggs) and performs IMU-based orientation calibration for laser positioning. Computes pan/tilt commands with offset correction.",
+                description = "Selects primary targets (CPB eggs) and performs IMU-based orientation calibration for laser positioning. Computes pan/tilt commands with offset correction, publishes ESP32_Command.",
                 subscribesTo = listOf(
                     TopicInfo("/cpb_eggs_center", "geometry_msgs/msg/Point"),
                     TopicInfo("/zed/zed_node/imu/data", "sensor_msgs/msg/Imu"),
-                    TopicInfo("/arm_position_feedback", "std_msgs/msg/String"),
+                    TopicInfo("ESP32_Feedback", "vermin_collector_ros_msgs/msg/Feedback"),
                     TopicInfo("/pan_tilt_fixed_position", "std_msgs/msg/Float32MultiArray")
                 ),
                 publishesTo = listOf(
-                    TopicInfo("/arm_position_goal", "std_msgs/msg/Float32MultiArray")
+                    TopicInfo("ESP32_Command", "vermin_collector_ros_msgs/msg/Command")
                 ),
                 upstreamNodeId = "object_detection",
                 isExternal = false
@@ -393,12 +393,12 @@ class PipelineStateMachine(
             PipelineNode(
                 id = "micro_ros_agent",
                 name = "micro-ROS Agent",
-                description = "Bridges ROS 2 DDS network to ESP32-S3 pan-and-tilt controller via USB CDC-ACM serial (460800 baud). XRCE-DDS protocol with HDLC framing. ESP32 subscribes to /ESP32_Command and publishes /ESP32_Feedback for 3-axis stepper motor control (pitch, yaw, slide).",
+                description = "XRCE-DDS bridge between ROS 2 DDS network and ESP32-S3 microcontroller via USB CDC-ACM serial at 460800 baud. Bridges ESP32_Command/ESP32_Feedback topics for 3-axis stepper control (pitch, yaw, slide) with laser.",
                 subscribesTo = listOf(
-                    TopicInfo("/ESP32_Command", "vermin_collector_ros_msgs/msg/Command")
+                    TopicInfo("ESP32_Command", "vermin_collector_ros_msgs/msg/Command")
                 ),
                 publishesTo = listOf(
-                    TopicInfo("/ESP32_Feedback", "vermin_collector_ros_msgs/msg/Feedback")
+                    TopicInfo("ESP32_Feedback", "vermin_collector_ros_msgs/msg/Feedback")
                 ),
                 upstreamNodeId = "target_manager",
                 isExternal = false

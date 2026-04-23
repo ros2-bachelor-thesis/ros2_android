@@ -20,8 +20,8 @@ Target: Android 13 (API 33), NDK 26.3.
 - **Jetpack Compose UI** - sensor list, live sensor data view, camera preview, pipeline node management with runtime state visualization
 - **Testing framework** - Python-based ROS 2 subscriber test suite with matplotlib visualizers for all sensor types
 - **Beetle Predator mode** - handheld pest detection using built-in rear camera + GPS. Runs NCNN YOLOv9 + Deep SORT on camera frames, publishes geolocated detections as `vermin_collector_ros_msgs/BeetleDetection` with novelty filtering (only new confirmed tracks). User selects which classes (beetle, larva, eggs) trigger publishing via label filter chips
-- **Target manager** - CPB egg selection with IMU-based orientation calibration, subscribes to detection results and ZED IMU, publishes pan/tilt goals *(subject to change)*
-- **micro-ROS Agent** - XRCE-DDS bridge over USB CDC-ACM serial (460800 baud) to ESP32-S3 pan-and-tilt controller (pan_and_tilt_zephyr_app). Transparent protocol bridge with HDLC framing - ESP32 subscribes to `/ESP32_Command` and publishes `/ESP32_Feedback` using `vermin_collector_ros_msgs`
+- **Target manager** - CPB egg selection with IMU-based orientation calibration, subscribes to detection results and ZED IMU, publishes `ESP32_Command` via micro-ROS Agent to ESP32
+- **micro-ROS Agent** - XRCE-DDS bridge over USB CDC-ACM serial at 460800 baud, HDLC framing, bridges `ESP32_Command`/`ESP32_Feedback` between ROS 2 DDS network and ESP32-S3 microcontroller
 
 ### Planned (Not Yet Implemented)
 
@@ -106,7 +106,7 @@ Target: Android 13 (API 33), NDK 26.3.
 │   ROS 2 Network (same domain ID)                            │
 │   - Other ROS 2 nodes on host machine                       │
 │   - Topics: /<device_id>/sensors/*, /<device_id>/camera/*,  │
-│     /scan, /cpb_*, /ESP32_Command, /ESP32_Feedback,          │
+│     /scan, /cpb_*, /ESP32_Command, /ESP32_Feedback,         │
 │     /cpb_predator/detection                   │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -158,7 +158,8 @@ The app publishes the following topics that can be discovered and consumed by ot
 - `/<device_id>/cpb_larva` - `sensor_msgs/PointCloud2` - cropped larva point cloud
 - `/<device_id>/cpb_eggs_center` - `geometry_msgs/Point` - 3D egg detection center
 - `/<device_id>/cpb_eggs` - `sensor_msgs/PointCloud2` - cropped egg point cloud
-- `/arm_position_goal` - `std_msgs/Float32MultiArray` - pan/tilt goal from target manager
+- `/ESP32_Command` - `vermin_collector_ros_msgs/Command` - motor commands to ESP32 via micro-ROS Agent
+- `/ESP32_Feedback` - `vermin_collector_ros_msgs/Feedback` - motor state feedback from ESP32 via micro-ROS Agent
 
 **Beetle Predator (handheld detection):**
 
@@ -175,7 +176,7 @@ The app includes a complete perception and positioning pipeline for Colorado Pot
 ### Pipeline Architecture
 
 ```
-ZED Camera (External) → Object Detection (Android) → Target Manager → micro-ROS Agent
+ZED Camera (External) → Object Detection (Android) → Target Manager → micro-ROS Agent → ESP32
 ```
 
 **State Machine Flow:**
@@ -223,12 +224,9 @@ TARGET_RUNNING → AGENT_RUNNING
 - Feature dimension: 128-D appearance features for tracking
 - Inference backend: NCNN (Tencent) optimized for ARM NEON
 
-### Target Manager Node *(subject to change)*
+### Target Manager Node
 
-> [!NOTE]
-> The target manager is implemented but subject to change. It is excluded from the thesis scope.
-
-Selects CPB egg targets for laser engagement, compensating for camera-to-laser physical offsets and device orientation via ZED IMU data.
+Selects CPB egg targets for laser engagement, compensating for camera-to-laser physical offsets and device orientation via ZED IMU data. Publishes `ESP32_Command` directly to the micro-ROS Agent, which bridges it to the ESP32 microcontroller.
 
 **State machine:** INIT - CALIBRATING - READY - SENT_TARGET - WAITING_TO_RETURN - RETURNING - FINISHED (also supports FIXED_POSITION_MODE for manual override)
 
@@ -236,25 +234,12 @@ Selects CPB egg targets for laser engagement, compensating for camera-to-laser p
 
 - `/cpb_eggs_center` - `geometry_msgs/Point` - 3D egg cluster location from object detection
 - `/zed/zed_node/imu/data` - `sensor_msgs/Imu` - ZED camera IMU for orientation calibration
+- `/ESP32_Feedback` - `vermin_collector_ros_msgs/Feedback` - state feedback from ESP32 via micro-ROS Agent
 - `/pan_tilt_fixed_position` - `std_msgs/Float32MultiArray` - manual override position
 
 **Output (published topics):**
 
-- `/arm_position_goal` - `std_msgs/Float32MultiArray` - computed pan/tilt angles
-
-### micro-ROS Agent Node
-
-Bridges the ROS 2 DDS network to the ESP32-S3 pan-and-tilt controller (pan_and_tilt_zephyr_app) via USB CDC-ACM serial at 460800 baud. Uses Micro-XRCE-DDS Agent with HDLC framing over the JNI serial transport (reuses the YDLIDAR USB serial bridge infrastructure).
-
-The agent is a transparent protocol bridge - it forwards XRCE-DDS frames between USB serial and DDS without knowledge of message semantics. The ESP32 firmware handles its own ROS 2 topics through the XRCE-DDS client library.
-
-**ESP32 subscribed topics (bridged from DDS to microcontroller):**
-
-- `/ESP32_Command` - `vermin_collector_ros_msgs/Command` - motor commands (command_type, step_goals[3], laser_duration, resolution, frequency)
-
-**ESP32 published topics (bridged from microcontroller to DDS):**
-
-- `/ESP32_Feedback` - `vermin_collector_ros_msgs/Feedback` - motor state and positions (state, current_steps[3], frequency, resolution)
+- `/ESP32_Command` - `vermin_collector_ros_msgs/Command` - motor commands sent to ESP32 via micro-ROS Agent
 
 ### Dynamic Node Detection
 
@@ -290,7 +275,7 @@ The pipeline supports distributed deployment across multiple Android devices or 
 
 **State machine implementation:**
 
-- Pipeline state stored as enum: `PipelineState` (STOPPED → COMMAND_ACTIVE)
+- Pipeline state stored as enum: `PipelineState` (STOPPED → AGENT_RUNNING)
 - Node runtime tracking: `NodeRuntimeState` (runningLocally, detectedOnNetwork)
 - Topic probing drives state transitions automatically
 - One-way progression with rollback on node stop (cascades to downstream)

@@ -20,11 +20,18 @@ enum class PipelineState {
     /** Object detection is running. Target manager can now be started. */
     DETECTION_RUNNING,
 
-    /** Target manager is running. micro-ROS agent can now be started. */
+    /**
+     * Target manager is running (locally or on another device).
+     * Publishes: ESP32_Command
+     * micro-ROS agent can now be started.
+     */
     TARGET_RUNNING,
 
-    /** micro-ROS agent bridging ESP32 via USB serial. Full pipeline active. */
-    AGENT_RUNNING;
+    /**
+     * micro-ROS agent running, bridging ESP32_Command/ESP32_Feedback
+     * between ROS 2 DDS network and ESP32 microcontroller via USB serial.
+     */
+    COMMAND_ACTIVE;
 
     fun getDescription(): String = when (this) {
         STOPPED -> "Pipeline inactive"
