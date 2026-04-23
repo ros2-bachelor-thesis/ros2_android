@@ -27,7 +27,6 @@
 #include "lidar/impl/ydlidar_device.h"
 #include "beetle_predator/controllers/beetle_predator_controller.h"
 #include "perception/controllers/perception_controller.h"
-#include "arm_commander/controllers/arm_commander_controller.h"
 #include "targeting/controllers/target_manager_controller.h"
 #include "ros/ros_interface.h"
 #include <core/serial/serial.h>
@@ -240,18 +239,6 @@ public:
       }
       perception_controller_.reset();
       LOGI("Cleanup: Perception controller cleared");
-    }
-
-    // Clear arm commander controller
-    if (arm_commander_controller_)
-    {
-      LOGI("Cleanup: Disabling arm commander controller");
-      if (arm_commander_controller_->IsEnabled())
-      {
-        arm_commander_controller_->Disable();
-      }
-      arm_commander_controller_.reset();
-      LOGI("Cleanup: Arm commander controller cleared");
     }
 
     // Clear target manager controller
@@ -614,7 +601,6 @@ public:
   // Perception (ML pipeline)
   std::unique_ptr<ros2_android::PerceptionController> perception_controller_;
   std::unique_ptr<ros2_android::TargetManagerController> target_manager_controller_;
-  std::unique_ptr<ros2_android::ArmCommanderController> arm_commander_controller_;
 
   // Beetle Predator (built-in camera + GPS + NCNN detection)
   std::unique_ptr<ros2_android::BeetlePredatorController> beetle_predator_controller_;
@@ -1640,69 +1626,6 @@ extern "C"
     }
 
     g_app->target_manager_controller_->SetFixedPositionMode(enabled == JNI_TRUE);
-  }
-
-  // ============================================================================
-  // Arm Commander JNI Functions
-  // ============================================================================
-
-  JNIEXPORT void JNICALL
-  Java_com_github_mowerick_ros2_android_util_NativeBridge_enableArmCommander(
-      JNIEnv * /*env*/, jclass /*clazz*/)
-  {
-    if (!g_app)
-    {
-      LOGE("enableArmCommander: g_app is null");
-      return;
-    }
-
-    if (!g_app->ros_ || !g_app->ros_->Initialized())
-    {
-      LOGE("enableArmCommander: ROS not initialized");
-      return;
-    }
-
-    if (!g_app->arm_commander_controller_)
-    {
-      g_app->arm_commander_controller_ =
-          std::make_unique<ros2_android::ArmCommanderController>(*g_app->ros_);
-    }
-
-    g_app->arm_commander_controller_->Enable();
-    LOGI("Arm commander enabled");
-  }
-
-  JNIEXPORT void JNICALL
-  Java_com_github_mowerick_ros2_android_util_NativeBridge_disableArmCommander(
-      JNIEnv * /*env*/, jclass /*clazz*/)
-  {
-    if (!g_app)
-    {
-      LOGE("disableArmCommander: g_app is null");
-      return;
-    }
-
-    if (g_app->arm_commander_controller_)
-    {
-      LOGI("disableArmCommander: Disabling arm commander");
-      g_app->arm_commander_controller_->Disable();
-    }
-    else
-    {
-      LOGW("disableArmCommander: arm_commander_controller_ is null");
-    }
-  }
-
-  JNIEXPORT jboolean JNICALL
-  Java_com_github_mowerick_ros2_android_util_NativeBridge_isArmCommanderEnabled(
-      JNIEnv * /*env*/, jclass /*clazz*/)
-  {
-    if (!g_app || !g_app->arm_commander_controller_)
-    {
-      return JNI_FALSE;
-    }
-
-    return g_app->arm_commander_controller_->IsEnabled() ? JNI_TRUE : JNI_FALSE;
   }
 
   // ============================================================================

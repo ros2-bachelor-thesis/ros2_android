@@ -29,7 +29,6 @@ import com.github.mowerick.ros2.android.ui.screens.BuiltInSensorsScreen
 import com.github.mowerick.ros2.android.ui.screens.CameraDetailScreen
 import com.github.mowerick.ros2.android.ui.screens.DashboardScreen
 import com.github.mowerick.ros2.android.ui.screens.ExternalSensorsScreen
-import com.github.mowerick.ros2.android.ui.screens.CommandBridgeDetailScreen
 import com.github.mowerick.ros2.android.ui.screens.FullscreenDebugVisualizationScreen
 import com.github.mowerick.ros2.android.ui.screens.LidarDetailScreen
 import com.github.mowerick.ros2.android.ui.screens.NodeDetailScreen
@@ -387,7 +386,6 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                         isNodeProbing = { nodeStates[it]?.isProbing == true },
                         onToggleNodeProbing = { vm.toggleNodeProbing(it) },
                         onReset = { vm.resetPipeline() },
-                        onCommandBridgeClick = { vm.navigateToCommandBridge() },
                         isRunningLocally = { nodeStates[it]?.runningLocally == true },
                         isDetectedOnNetwork = { nodeStates[it]?.detectedOnNetwork == true },
                         isNodeStarting = { nodeStates[it]?.isStarting == true }
@@ -408,31 +406,6 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                                 onDisableVisualization = { vm.disableVisualization() },
                                 onFullscreenClick = { vm.navigateToDebugFullscreen() },
                                 isNodeStarting = { nodeStates[it]?.isStarting == true }
-                            )
-                        }
-                    }
-                    is Screen.CommandBridge -> {
-                        val armCommander = pipelineNodes.find { it.id == "arm_commander" }
-                        val microRosAgent = pipelineNodes.find { it.id == "micro_ros_agent" }
-                        if (armCommander != null && microRosAgent != null) {
-                            CommandBridgeDetailScreen(
-                                armCommander = armCommander,
-                                microRosAgent = microRosAgent,
-                                onBack = { vm.navigateBack() },
-                                onStartStopArm = { vm.toggleNodeState("arm_commander") },
-                                onStartStopAgent = { vm.toggleNodeState("micro_ros_agent") },
-                                onStartBoth = {
-                                    vm.toggleNodeState("arm_commander")
-                                    vm.toggleNodeState("micro_ros_agent")
-                                },
-                                armRunningLocally = vm.isNodeRunningLocally("arm_commander"),
-                                armDetectedOnNetwork = vm.isNodeDetectedOnNetwork("arm_commander"),
-                                agentRunningLocally = vm.isNodeRunningLocally("micro_ros_agent"),
-                                agentDetectedOnNetwork = vm.isNodeDetectedOnNetwork("micro_ros_agent"),
-                                canStartArm = vm.isNodeStartable("arm_commander"),
-                                canStartAgent = vm.isNodeStartable("micro_ros_agent"),
-                                isStartingArm = nodeStates["arm_commander"]?.isStarting == true,
-                                isStartingAgent = nodeStates["micro_ros_agent"]?.isStarting == true
                             )
                         }
                     }

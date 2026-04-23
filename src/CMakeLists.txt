@@ -95,8 +95,6 @@ add_library(android-ros SHARED
   # Targeting controller (laser positioning)
   targeting/controllers/target_manager_controller.cc
 
-  # Arm commander controller (pan/tilt arm ACK/NACK protocol)
-  arm_commander/controllers/arm_commander_controller.cc
 )
 target_link_libraries(android-ros PRIVATE
     android

@@ -34,16 +34,14 @@ enum class PipelineState {
 
     /**
      * Target manager is running (locally or on another device).
-     * Publishes: /arm_position_goal
-     * Arm commander can now be started.
+     * Publishes: ESP32_Command
+     * micro-ROS agent can now be started.
      */
     TARGET_RUNNING,
 
     /**
-     * Arm commander and micro-ROS agent running as co-dependent pair.
-     * Bidirectional data flow: arm_commander publishes /PointNShoot,
-     * micro-ROS agent bridges to microcontroller which publishes
-     * /PointNShoot_ACK, _DONE, _NACK feedback back to arm_commander.
+     * micro-ROS agent running, bridging ESP32_Command/ESP32_Feedback
+     * between ROS 2 DDS network and ESP32 microcontroller via USB serial.
      */
     COMMAND_ACTIVE;
 

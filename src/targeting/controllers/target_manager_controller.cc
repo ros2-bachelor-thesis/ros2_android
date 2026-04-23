@@ -24,7 +24,7 @@ constexpr float kTiltMin = -30.0f;
 constexpr float kTiltMax = 40.0f;
 
 // Shooting dwell time (milliseconds)
-constexpr float kShootingTimeMs = 1000.0f;
+constexpr uint32_t kShootingTimeMs = 1000;
 
 // State machine tick rate
 constexpr int kTimerMs = 100;
@@ -33,6 +33,21 @@ constexpr int kTimerMs = 100;
 constexpr float kEpsilon = 0.00001f;
 
 constexpr float kRadToDeg = 180.0f / static_cast<float>(M_PI);
+
+// Stepper motor conversion constants
+// TODO(oliver): Update these values from actual motor specs
+constexpr float kFullStepsPerRevolution = 200.0f;  // 1.8 deg/step (NEMA 17)
+constexpr float kMicrostepResolution = 16.0f;      // default from ESP32 firmware
+constexpr float kGearRatio = 1.0f;                 // TODO: get actual gear ratio
+constexpr float kMicrostepsPerDegree =
+    (kFullStepsPerRevolution * kMicrostepResolution * kGearRatio) / 360.0f;
+
+static int32_t DegreesToMicrosteps(float degrees) {
+  return static_cast<int32_t>(degrees * kMicrostepsPerDegree);
+}
+
+// ESP32 Feedback state constants (mirrors vermin_collector_ros_msgs/msg/Feedback)
+constexpr uint8_t kEsp32StateReady = 0;
 
 }  // namespace
 
@@ -59,13 +74,13 @@ const char* TargetManagerStateName(TargetManagerState state) {
 TargetManagerController::TargetManagerController(RosInterface& ros)
     : SensorDataProvider("target_manager"),
       ros_(ros),
-      goal_pub_(ros) {
-  goal_pub_.SetTopic("/arm_position_goal");
+      command_pub_(ros) {
+  command_pub_.SetTopic("ESP32_Command");
 
   auto qos = rclcpp::QoS(rclcpp::KeepLast(10))
                   .reliable()
                   .durability_volatile();
-  goal_pub_.SetQos(qos);
+  command_pub_.SetQos(qos);
 
   LOGD("TargetManagerController initialized");
 }
@@ -90,7 +105,7 @@ std::string TargetManagerController::GetLastMeasurementJson() {
   std::lock_guard<std::mutex> lock(state_mutex_);
   std::ostringstream ss;
   ss << "{\"state\":\"" << TargetManagerStateName(state_) << "\""
-     << ",\"arm_state\":\"" << arm_state_ << "\""
+     << ",\"esp32_state\":" << static_cast<int>(esp32_state_)
      << ",\"tilt_offset\":" << tilt_offset_
      << ",\"pan_offset\":" << pan_offset_
      << ",\"fixed_position_mode\":" << (fixed_position_mode_ ? "true" : "false")
@@ -135,8 +150,8 @@ void TargetManagerController::Enable() {
       std::bind(&TargetManagerController::OnImu, this,
                 std::placeholders::_1));
 
-  feedback_sub_ = node->create_subscription<std_msgs::msg::String>(
-      "/arm_position_feedback", qos,
+  feedback_sub_ = node->create_subscription<vermin_collector_ros_msgs::msg::Feedback>(
+      "ESP32_Feedback", qos,
       std::bind(&TargetManagerController::OnFeedback, this,
                 std::placeholders::_1));
 
@@ -149,13 +164,13 @@ void TargetManagerController::Enable() {
       std::chrono::milliseconds(kTimerMs),
       std::bind(&TargetManagerController::StateMachineCallback, this));
 
-  goal_pub_.Enable();
+  command_pub_.Enable();
 
   // Reset state
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
     state_ = TargetManagerState::INIT;
-    arm_state_ = "IDLE";
+    esp32_state_ = kEsp32StateReady;
     tilt_offset_ = 0.0f;
     pan_offset_ = 0.0f;
     imu_orientation_.reset();
@@ -179,12 +194,12 @@ void TargetManagerController::Disable() {
   fixed_pos_sub_.reset();
   timer_.reset();
 
-  goal_pub_.Disable();
+  command_pub_.Disable();
 
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
     state_ = TargetManagerState::INIT;
-    arm_state_ = "IDLE";
+    esp32_state_ = kEsp32StateReady;
     imu_orientation_.reset();
   }
 
@@ -220,9 +235,9 @@ void TargetManagerController::OnTarget(
     const geometry_msgs::msg::Point::SharedPtr msg) {
   std::lock_guard<std::mutex> lock(state_mutex_);
 
-  if (state_ != TargetManagerState::READY || arm_state_ != "IDLE") {
-    LOGD("Target ignored - state=%s, arm=%s",
-         TargetManagerStateName(state_), arm_state_.c_str());
+  if (state_ != TargetManagerState::READY || esp32_state_ != kEsp32StateReady) {
+    LOGD("Target ignored - state=%s, esp32_state=%d",
+         TargetManagerStateName(state_), esp32_state_);
     return;
   }
 
@@ -244,9 +259,9 @@ void TargetManagerController::OnImu(
 }
 
 void TargetManagerController::OnFeedback(
-    const std_msgs::msg::String::SharedPtr msg) {
+    const vermin_collector_ros_msgs::msg::Feedback::SharedPtr msg) {
   std::lock_guard<std::mutex> lock(state_mutex_);
-  arm_state_ = msg->data;
+  esp32_state_ = msg->state;
 }
 
 void TargetManagerController::OnFixedPosition(
@@ -254,7 +269,7 @@ void TargetManagerController::OnFixedPosition(
   std::lock_guard<std::mutex> lock(state_mutex_);
 
   if (state_ != TargetManagerState::FIXED_POSITION_MODE ||
-      arm_state_ != "IDLE") {
+      esp32_state_ != kEsp32StateReady) {
     return;
   }
 
@@ -271,10 +286,13 @@ void TargetManagerController::OnFixedPosition(
     return;  // No change
   }
 
-  std_msgs::msg::Float32MultiArray goal;
-  goal.data = {0.0f, tilt + tilt_offset_, pan + pan_offset_,
-               0.0f, 0.0f, 0.0f, 0.0f};
-  goal_pub_.Publish(goal);
+  vermin_collector_ros_msgs::msg::Command cmd;
+  cmd.command_type = vermin_collector_ros_msgs::msg::Command::TARGET;
+  cmd.step_goals[0] = DegreesToMicrosteps(tilt + tilt_offset_);   // pitch
+  cmd.step_goals[1] = DegreesToMicrosteps(pan + pan_offset_);     // yaw
+  cmd.step_goals[2] = 0;                                          // slide
+  cmd.laser_duration_ms = 0;  // no laser in fixed position mode
+  command_pub_.Publish(cmd);
 
   state_ = TargetManagerState::SENT_TARGET;
   last_fixed_position_ = {pan, tilt};
@@ -308,13 +326,15 @@ void TargetManagerController::StateMachineCallback() {
       break;
 
     case TargetManagerState::SENT_TARGET:
-      if (arm_state_ == "WAIT_AFTER_DONE") {
+      // ESP32 transitions: READY -> MOVING -> READY
+      // When ESP32 reports READY again, movement is complete
+      if (esp32_state_ == kEsp32StateReady) {
         state_ = TargetManagerState::WAITING_TO_RETURN;
       }
       break;
 
     case TargetManagerState::WAITING_TO_RETURN:
-      if (arm_state_ == "IDLE") {
+      if (esp32_state_ == kEsp32StateReady) {
         if (fixed_position_mode_) {
           state_ = TargetManagerState::FIXED_POSITION_MODE;
         } else {
@@ -325,13 +345,13 @@ void TargetManagerController::StateMachineCallback() {
       break;
 
     case TargetManagerState::RETURNING:
-      if (arm_state_ == "WAIT_AFTER_DONE") {
+      if (esp32_state_ == kEsp32StateReady) {
         state_ = TargetManagerState::FINISHED;
       }
       break;
 
     case TargetManagerState::FINISHED:
-      if (arm_state_ == "IDLE") {
+      if (esp32_state_ == kEsp32StateReady) {
         state_ = TargetManagerState::READY;
         LOGI("Ready for next target");
       }
@@ -345,7 +365,7 @@ void TargetManagerController::StateMachineCallback() {
 }
 
 bool TargetManagerController::Calibrate() {
-  if (arm_state_ != "IDLE") {
+  if (esp32_state_ != kEsp32StateReady) {
     return false;
   }
 
@@ -391,19 +411,27 @@ void TargetManagerController::SendTarget(
   auto [pan, tilt] = ComputePanTiltDegrees(x, y, z);
   ClampPanTiltAngles(pan, tilt);
 
-  std_msgs::msg::Float32MultiArray goal;
-  goal.data = {0.0f, tilt + tilt_offset_, pan + pan_offset_,
-               0.0f, 0.0f, kShootingTimeMs, 0.0f};
-  goal_pub_.Publish(goal);
+  vermin_collector_ros_msgs::msg::Command cmd;
+  cmd.command_type = vermin_collector_ros_msgs::msg::Command::TARGET;
+  cmd.step_goals[0] = DegreesToMicrosteps(tilt + tilt_offset_);   // pitch
+  cmd.step_goals[1] = DegreesToMicrosteps(pan + pan_offset_);     // yaw
+  cmd.step_goals[2] = 0;                                          // slide
+  cmd.laser_duration_ms = kShootingTimeMs;
+  command_pub_.Publish(cmd);
 
-  LOGI("Sent target: tilt=%.2f, pan=%.2f", tilt, pan);
+  LOGI("Sent target: tilt=%.2f, pan=%.2f (microsteps: %d, %d)",
+       tilt, pan,
+       cmd.step_goals[0], cmd.step_goals[1]);
 }
 
 void TargetManagerController::ReturnToZero() {
-  std_msgs::msg::Float32MultiArray goal;
-  goal.data = {0.0f, tilt_offset_, pan_offset_,
-               0.0f, 0.0f, 0.0f, 0.0f};
-  goal_pub_.Publish(goal);
+  vermin_collector_ros_msgs::msg::Command cmd;
+  cmd.command_type = vermin_collector_ros_msgs::msg::Command::HOMING;
+  cmd.step_goals[0] = 0;
+  cmd.step_goals[1] = 0;
+  cmd.step_goals[2] = 0;
+  cmd.laser_duration_ms = 0;
+  command_pub_.Publish(cmd);
 
   LOGI("Returning to (0, 0)");
 }

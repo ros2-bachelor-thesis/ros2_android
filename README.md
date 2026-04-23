@@ -20,13 +20,12 @@ Target: Android 13 (API 33), NDK 26.3.
 - **Jetpack Compose UI** - sensor list, live sensor data view, camera preview, pipeline node management with runtime state visualization
 - **Testing framework** - Python-based ROS 2 subscriber test suite with matplotlib visualizers for all sensor types
 - **Beetle Predator mode** - handheld pest detection using built-in rear camera + GPS. Runs NCNN YOLOv9 + Deep SORT on camera frames, publishes geolocated detections as `vermin_collector_ros_msgs/BeetleDetection` with novelty filtering (only new confirmed tracks). User selects which classes (beetle, larva, eggs) trigger publishing via label filter chips
-- **Target manager** - CPB egg selection with IMU-based orientation calibration, subscribes to detection results and ZED IMU, publishes pan/tilt goals for the arm commander *(subject to change)*
-- **Arm commander** - pan/tilt arm control with ACK/NACK protocol and state machine (IDLE - AWAITING_ACK - AWAITING_DONE - WAIT_AFTER_DONE), subscribes to position goals, publishes `/PointNShoot` commands for micro-ROS *(subject to change)*
+- **Target manager** - CPB egg selection with IMU-based orientation calibration, subscribes to detection results and ZED IMU, publishes `ESP32_Command` via micro-ROS Agent to ESP32
+- **micro-ROS Agent** - XRCE-DDS bridge over USB CDC-ACM serial at 460800 baud, HDLC framing, bridges `ESP32_Command`/`ESP32_Feedback` between ROS 2 DDS network and ESP32-S3 microcontroller
 
 ### Planned (Not Yet Implemented)
 
 - **DDS-Security** - OpenSSL static linking (hidden visibility to avoid BoringSSL collision), Cyclone DDS security plugins, SROS2 credentials
-- **micro-ROS Agent** - hosting the agent on Android to bridge ROS 2 DDS to microcontrollers via serial/USB
 
 ### Known Limitations
 
@@ -82,9 +81,9 @@ Target: Android 13 (API 33), NDK 26.3.
 │   │                    │ IMU, fb)    │      │   │
 │   │                    └──────┬──────┘      │   │
 │   │                    ┌──────▼──────┐      │   │
-│   │                    │Arm Commander│      │   │
-│   │                    │(pub: PnS,   │      │   │
-│   │                    │ sub: ACK)   │      │   │
+│   │                    │micro-ROS    │      │   │
+│   │                    │Agent (XRCE- │      │   │
+│   │                    │DDS bridge)  │      │   │
 │   │                    └─────────────┘      │   │
 │   └─────────────────────────────────────────┘   │
 │                                                 │
@@ -107,7 +106,7 @@ Target: Android 13 (API 33), NDK 26.3.
 │   ROS 2 Network (same domain ID)                            │
 │   - Other ROS 2 nodes on host machine                       │
 │   - Topics: /<device_id>/sensors/*, /<device_id>/camera/*,  │
-│     /scan, /cpb_*, /arm_position_*, /PointNShoot,           │
+│     /scan, /cpb_*, /ESP32_Command, /ESP32_Feedback,         │
 │     /cpb_predator/detection                   │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -159,9 +158,8 @@ The app publishes the following topics that can be discovered and consumed by ot
 - `/<device_id>/cpb_larva` - `sensor_msgs/PointCloud2` - cropped larva point cloud
 - `/<device_id>/cpb_eggs_center` - `geometry_msgs/Point` - 3D egg detection center
 - `/<device_id>/cpb_eggs` - `sensor_msgs/PointCloud2` - cropped egg point cloud
-- `/arm_position_goal` - `std_msgs/Float32MultiArray` - pan/tilt goal from target manager
-- `/PointNShoot` - `std_msgs/Float32MultiArray` - pan/tilt command to microcontroller
-- `/arm_position_feedback` - `std_msgs/String` - arm commander state feedback
+- `/ESP32_Command` - `vermin_collector_ros_msgs/Command` - motor commands to ESP32 via micro-ROS Agent
+- `/ESP32_Feedback` - `vermin_collector_ros_msgs/Feedback` - motor state feedback from ESP32 via micro-ROS Agent
 
 **Beetle Predator (handheld detection):**
 
@@ -178,14 +176,14 @@ The app includes a complete perception and positioning pipeline for Colorado Pot
 ### Pipeline Architecture
 
 ```
-ZED Camera (External) → Object Detection (Android) → Target Manager → Arm Commander → micro-ROS Agent
+ZED Camera (External) → Object Detection (Android) → Target Manager → micro-ROS Agent → ESP32
 ```
 
 **State Machine Flow:**
 
 ```
 STOPPED → ZED_PROBING → ZED_AVAILABLE → DETECTION_RUNNING →
-TARGET_RUNNING → COMMAND_ACTIVE
+TARGET_RUNNING → AGENT_RUNNING
 ```
 
 ### Object Detection Node
@@ -226,12 +224,9 @@ TARGET_RUNNING → COMMAND_ACTIVE
 - Feature dimension: 128-D appearance features for tracking
 - Inference backend: NCNN (Tencent) optimized for ARM NEON
 
-### Target Manager Node *(subject to change)*
+### Target Manager Node
 
-> [!NOTE]
-> The target manager and arm commander are implemented but subject to change. They are excluded from the thesis scope.
-
-Selects CPB egg targets for laser engagement, compensating for camera-to-laser physical offsets and device orientation via ZED IMU data.
+Selects CPB egg targets for laser engagement, compensating for camera-to-laser physical offsets and device orientation via ZED IMU data. Publishes `ESP32_Command` directly to the micro-ROS Agent, which bridges it to the ESP32 microcontroller.
 
 **State machine:** INIT - CALIBRATING - READY - SENT_TARGET - WAITING_TO_RETURN - RETURNING - FINISHED (also supports FIXED_POSITION_MODE for manual override)
 
@@ -239,30 +234,12 @@ Selects CPB egg targets for laser engagement, compensating for camera-to-laser p
 
 - `/cpb_eggs_center` - `geometry_msgs/Point` - 3D egg cluster location from object detection
 - `/zed/zed_node/imu/data` - `sensor_msgs/Imu` - ZED camera IMU for orientation calibration
-- `/arm_position_feedback` - `std_msgs/String` - state feedback from arm commander
+- `/ESP32_Feedback` - `vermin_collector_ros_msgs/Feedback` - state feedback from ESP32 via micro-ROS Agent
 - `/pan_tilt_fixed_position` - `std_msgs/Float32MultiArray` - manual override position
 
 **Output (published topics):**
 
-- `/arm_position_goal` - `std_msgs/Float32MultiArray` - computed pan/tilt angles for arm commander
-
-### Arm Commander Node *(subject to change)*
-
-Manages the pan/tilt arm command protocol with the microcontroller via micro-ROS. Implements a state machine with timeout-based retransmission and NACK handling.
-
-**State machine:** IDLE - AWAITING_ACK - AWAITING_DONE - WAIT_AFTER_DONE - WAIT_AFTER_NACK - NACK_LIMIT_EXCEEDED
-
-**Input (subscribed topics):**
-
-- `/arm_position_goal` - `std_msgs/Float32MultiArray` - pan/tilt goal from target manager
-- `/PointNShoot_ACK` - `std_msgs/Float32` - acknowledgment from microcontroller
-- `/PointNShoot_DONE` - `std_msgs/Float32` - completion signal from microcontroller
-- `/PointNShoot_NACK` - `std_msgs/Float32` - negative acknowledgment from microcontroller
-
-**Output (published topics):**
-
-- `/PointNShoot` - `std_msgs/Float32MultiArray` - pan/tilt command to microcontroller
-- `/arm_position_feedback` - `std_msgs/String` - current state name (consumed by target manager)
+- `/ESP32_Command` - `vermin_collector_ros_msgs/Command` - motor commands sent to ESP32 via micro-ROS Agent
 
 ### Dynamic Node Detection
 
@@ -298,7 +275,7 @@ The pipeline supports distributed deployment across multiple Android devices or 
 
 **State machine implementation:**
 
-- Pipeline state stored as enum: `PipelineState` (STOPPED → COMMAND_ACTIVE)
+- Pipeline state stored as enum: `PipelineState` (STOPPED → AGENT_RUNNING)
 - Node runtime tracking: `NodeRuntimeState` (runningLocally, detectedOnNetwork)
 - Topic probing drives state transitions automatically
 - One-way progression with rollback on node stop (cascades to downstream)

@@ -64,11 +64,6 @@ object NativeBridge {
     external fun disableTargetManager()
     external fun isTargetManagerEnabled(): Boolean
 
-    // Arm Commander management
-    external fun enableArmCommander()
-    external fun disableArmCommander()
-    external fun isArmCommanderEnabled(): Boolean
-
     // Perception debug visualization
     external fun nativeEnablePerceptionVisualization(enable: Boolean)
     external fun nativeGetDebugFrame(frameId: String): Bitmap?
