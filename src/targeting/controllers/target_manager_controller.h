@@ -63,6 +63,7 @@ class TargetManagerController : public SensorDataProvider {
   bool Calibrate();
 
   // Targeting
+  void SendSetup();
   void SendTarget(const geometry_msgs::msg::Point& msg);
   void ReturnToZero();
   std::pair<float, float> ComputePanTiltDegrees(float x, float y, float z);
@@ -85,6 +86,7 @@ class TargetManagerController : public SensorDataProvider {
   mutable std::mutex state_mutex_;
   TargetManagerState state_ = TargetManagerState::INIT;
   uint8_t esp32_state_ = 0;  // Feedback::READY
+  bool setup_sent_ = false;
   bool fixed_position_mode_ = false;
 
   // Calibration

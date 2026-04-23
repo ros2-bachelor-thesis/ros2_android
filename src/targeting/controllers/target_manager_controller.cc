@@ -24,6 +24,7 @@ constexpr float kTiltMin = -30.0f;
 constexpr float kTiltMax = 40.0f;
 
 // Shooting dwell time (milliseconds)
+// NOTE: laser_duration_ms is sent but currently ignored by ESP32 firmware
 constexpr uint32_t kShootingTimeMs = 1000;
 
 // State machine tick rate
@@ -34,13 +35,14 @@ constexpr float kEpsilon = 0.00001f;
 
 constexpr float kRadToDeg = 180.0f / static_cast<float>(M_PI);
 
-// Stepper motor conversion constants
+// Stepper motor configuration (sent via SETUP command to ESP32)
 // TODO(oliver): Update these values from actual motor specs
 constexpr float kFullStepsPerRevolution = 200.0f;  // 1.8 deg/step (NEMA 17)
-constexpr float kMicrostepResolution = 16.0f;      // default from ESP32 firmware
-constexpr float kGearRatio = 1.0f;                 // TODO: get actual gear ratio
+constexpr uint8_t kSetupResolution = 16;            // 16x microstepping
+constexpr uint16_t kSetupFrequency = 1000;          // Hz per axis
+constexpr float kGearRatio = 1.0f;                  // TODO: get actual gear ratio
 constexpr float kMicrostepsPerDegree =
-    (kFullStepsPerRevolution * kMicrostepResolution * kGearRatio) / 360.0f;
+    (kFullStepsPerRevolution * static_cast<float>(kSetupResolution) * kGearRatio) / 360.0f;
 
 static int32_t DegreesToMicrosteps(float degrees) {
   return static_cast<int32_t>(degrees * kMicrostepsPerDegree);
@@ -171,6 +173,7 @@ void TargetManagerController::Enable() {
     std::lock_guard<std::mutex> lock(state_mutex_);
     state_ = TargetManagerState::INIT;
     esp32_state_ = kEsp32StateReady;
+    setup_sent_ = false;
     tilt_offset_ = 0.0f;
     pan_offset_ = 0.0f;
     imu_orientation_.reset();
@@ -200,6 +203,7 @@ void TargetManagerController::Disable() {
     std::lock_guard<std::mutex> lock(state_mutex_);
     state_ = TargetManagerState::INIT;
     esp32_state_ = kEsp32StateReady;
+    setup_sent_ = false;
     imu_orientation_.reset();
   }
 
@@ -292,6 +296,8 @@ void TargetManagerController::OnFixedPosition(
   cmd.step_goals[1] = DegreesToMicrosteps(pan + pan_offset_);     // yaw
   cmd.step_goals[2] = 0;                                          // slide
   cmd.laser_duration_ms = 0;  // no laser in fixed position mode
+  cmd.star_diameter = 0;      // simple target (no star pattern)
+  cmd.scan_limit = 0;
   command_pub_.Publish(cmd);
 
   state_ = TargetManagerState::SENT_TARGET;
@@ -308,9 +314,17 @@ void TargetManagerController::StateMachineCallback() {
 
   switch (state_) {
     case TargetManagerState::INIT:
-      LOGI("Entering calibration state");
-      state_ = TargetManagerState::CALIBRATING;
-      ReturnToZero();
+      if (!setup_sent_) {
+        SendSetup();
+        setup_sent_ = true;
+        LOGI("Sent SETUP command to ESP32");
+      }
+      // Wait for ESP32 to finish configuring, then start calibration
+      if (esp32_state_ == kEsp32StateReady && setup_sent_) {
+        LOGI("Entering calibration state");
+        state_ = TargetManagerState::CALIBRATING;
+        ReturnToZero();
+      }
       break;
 
     case TargetManagerState::CALIBRATING:
@@ -402,6 +416,18 @@ bool TargetManagerController::Calibrate() {
 // Targeting
 // ============================================================================
 
+void TargetManagerController::SendSetup() {
+  vermin_collector_ros_msgs::msg::Command cmd;
+  cmd.command_type = vermin_collector_ros_msgs::msg::Command::SETUP;
+  cmd.frequency_goals = {kSetupFrequency, kSetupFrequency, kSetupFrequency};
+  cmd.en_motors = {1, 1, 1};
+  cmd.resolution = kSetupResolution;
+  command_pub_.Publish(cmd);
+
+  LOGI("SETUP: freq=%d Hz, resolution=%dx, motors enabled",
+       kSetupFrequency, kSetupResolution);
+}
+
 void TargetManagerController::SendTarget(
     const geometry_msgs::msg::Point& msg) {
   float x = static_cast<float>(msg.x);
@@ -416,7 +442,10 @@ void TargetManagerController::SendTarget(
   cmd.step_goals[0] = DegreesToMicrosteps(tilt + tilt_offset_);   // pitch
   cmd.step_goals[1] = DegreesToMicrosteps(pan + pan_offset_);     // yaw
   cmd.step_goals[2] = 0;                                          // slide
+  // NOTE: laser_duration_ms is sent but currently ignored by ESP32 firmware
   cmd.laser_duration_ms = kShootingTimeMs;
+  cmd.star_diameter = 0;  // simple target (no star pattern)
+  cmd.scan_limit = 0;
   command_pub_.Publish(cmd);
 
   LOGI("Sent target: tilt=%.2f, pan=%.2f (microsteps: %d, %d)",
@@ -425,6 +454,7 @@ void TargetManagerController::SendTarget(
 }
 
 void TargetManagerController::ReturnToZero() {
+  // NOTE: HOMING on ESP32 is currently a 3-sec placeholder, not actual homing
   vermin_collector_ros_msgs::msg::Command cmd;
   cmd.command_type = vermin_collector_ros_msgs::msg::Command::HOMING;
   cmd.step_goals[0] = 0;
