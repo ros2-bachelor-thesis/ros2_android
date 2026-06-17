@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 class BeetlePredatorManager(
     private val applicationContext: Context,
@@ -21,19 +22,49 @@ class BeetlePredatorManager(
     private val onError: (String) -> Unit
 ) {
 
+    data class SnapshotDetection(
+        val label: String,
+        val classId: Int,
+        val confidence: Float,
+        val bboxX: Int,
+        val bboxY: Int,
+        val bboxW: Int,
+        val bboxH: Int
+    )
+
+    data class GpsSnapshot(
+        val lat: Double,
+        val lon: Double,
+        val alt: Double,
+        val accuracy: Float,
+        val hasGps: Boolean
+    )
+
     data class BeetlePredatorState(
         val enabled: Boolean = false,
         val modelsLoaded: Boolean = false,
         val visualizationEnabled: Boolean = false,
         val labelFilter: Set<String> = setOf(),
-        val newDetectionCount: Int = 0
+        val newDetectionCount: Int = 0,
+        val isProcessingSnapshot: Boolean = false,
+        val hasSnapshotResult: Boolean = false,
+        val snapshotDetections: List<SnapshotDetection> = emptyList(),
+        val snapshotGps: GpsSnapshot? = null
     )
 
     private val _state = MutableStateFlow(BeetlePredatorState())
     val state: StateFlow<BeetlePredatorState> = _state
 
-    private val _debugFrame = MutableStateFlow<Bitmap?>(null)
-    val debugFrame: StateFlow<Bitmap?> = _debugFrame
+    // Live camera viewfinder (10 Hz raw frames while enabled)
+    private val _previewFrame = MutableStateFlow<Bitmap?>(null)
+    val previewFrame: StateFlow<Bitmap?> = _previewFrame
+
+    // Annotated detection result (set after TakeSnapshot completes)
+    private val _snapshotFrame = MutableStateFlow<Bitmap?>(null)
+    val snapshotFrame: StateFlow<Bitmap?> = _snapshotFrame
+
+    // Legacy alias so existing ViewModel wiring still compiles
+    val debugFrame: StateFlow<Bitmap?> = _previewFrame
 
     init {
         coroutineScope.launch(Dispatchers.IO) {
@@ -52,7 +83,6 @@ class BeetlePredatorManager(
     }
 
     fun enable() {
-        // Ensure GPS is running (same check as built-in GPS sensor)
         if (!gpsManager.isRunning()) {
             Log.i(TAG, "Starting GPS for Beetle Predator")
             val launcher = getLocationSettingsLauncher()
@@ -64,19 +94,21 @@ class BeetlePredatorManager(
                 val modelsPath = "${applicationContext.filesDir.absolutePath}/models"
                 NativeBridge.enableBeetlePredator(modelsPath)
 
-                // Apply current label filter to the newly created controller
                 val mask = labelSetToMask(_state.value.labelFilter)
                 NativeBridge.setBeetlePredatorLabelFilter(mask)
-
-                // Enable visualization automatically
                 NativeBridge.enableBeetlePredatorVisualization(true)
 
                 withContext(Dispatchers.Main) {
                     _state.value = _state.value.copy(
                         enabled = true,
                         modelsLoaded = true,
-                        visualizationEnabled = true
+                        visualizationEnabled = true,
+                        hasSnapshotResult = false,
+                        isProcessingSnapshot = false,
+                        snapshotDetections = emptyList(),
+                        snapshotGps = null
                     )
+                    _snapshotFrame.value = null
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to enable Beetle Predator", e)
@@ -92,16 +124,20 @@ class BeetlePredatorManager(
             try {
                 NativeBridge.disableBeetlePredator()
 
-                // Stop GPS when beetle predator is disabled
                 Log.i(TAG, "Stopping GPS for Beetle Predator")
                 gpsManager.stop()
 
                 withContext(Dispatchers.Main) {
                     _state.value = _state.value.copy(
                         enabled = false,
-                        visualizationEnabled = false
+                        visualizationEnabled = false,
+                        isProcessingSnapshot = false,
+                        hasSnapshotResult = false,
+                        snapshotDetections = emptyList(),
+                        snapshotGps = null
                     )
-                    _debugFrame.value = null
+                    _previewFrame.value = null
+                    _snapshotFrame.value = null
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to disable Beetle Predator", e)
@@ -120,25 +156,126 @@ class BeetlePredatorManager(
             current.add(label)
         }
         _state.value = _state.value.copy(labelFilter = current)
-
-        // Convert to bitmask and send to native
-        val mask = labelSetToMask(current)
-        NativeBridge.setBeetlePredatorLabelFilter(mask)
+        NativeBridge.setBeetlePredatorLabelFilter(labelSetToMask(current))
     }
 
-    fun updateDebugFrame() {
+    fun takeSnapshot() {
+        if (!_state.value.enabled || _state.value.isProcessingSnapshot) return
+
+        _state.value = _state.value.copy(
+            isProcessingSnapshot = true,
+            hasSnapshotResult = false
+        )
+
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                // Blocks ~300-900 ms on the IO thread while detection runs
+                NativeBridge.takeBeetlePredatorSnapshot()
+                // Result arrives via onDebugFrameUpdate("beetle_predator_snapshot") callback
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to take snapshot", e)
+                withContext(Dispatchers.Main) {
+                    _state.value = _state.value.copy(isProcessingSnapshot = false)
+                    onError("Snapshot failed: ${e.message}")
+                }
+            }
+        }
+    }
+
+    fun retake() {
+        _state.value = _state.value.copy(
+            hasSnapshotResult = false,
+            isProcessingSnapshot = false,
+            snapshotDetections = emptyList(),
+            snapshotGps = null
+        )
+        _snapshotFrame.value = null
+    }
+
+    // Called by ViewModel when "beetle_predator_rgb" debug frame callback fires
+    fun updatePreviewFrame() {
         coroutineScope.launch(Dispatchers.IO) {
             try {
                 val bitmap = NativeBridge.getBeetlePredatorDebugFrame()
-                val count = NativeBridge.getBeetlePredatorDetectionCount()
-
                 withContext(Dispatchers.Main) {
-                    _debugFrame.value = bitmap
-                    _state.value = _state.value.copy(newDetectionCount = count)
+                    _previewFrame.value = bitmap
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to get debug frame", e)
+                Log.e(TAG, "Failed to get preview frame", e)
             }
+        }
+    }
+
+    // Called by ViewModel when "beetle_predator_snapshot" debug frame callback fires
+    fun updateSnapshotResult() {
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                val bitmap = NativeBridge.getBeetlePredatorSnapshotFrame()
+                val json = NativeBridge.getBeetlePredatorLastDetections()
+                val count = NativeBridge.getBeetlePredatorDetectionCount()
+
+                val detections = parseDetectionsJson(json)
+                val gps = parseGpsJson(json)
+
+                withContext(Dispatchers.Main) {
+                    _snapshotFrame.value = bitmap
+                    _state.value = _state.value.copy(
+                        isProcessingSnapshot = false,
+                        hasSnapshotResult = true,
+                        snapshotDetections = detections,
+                        snapshotGps = gps,
+                        newDetectionCount = count
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to get snapshot result", e)
+                withContext(Dispatchers.Main) {
+                    _state.value = _state.value.copy(isProcessingSnapshot = false)
+                }
+            }
+        }
+    }
+
+    // Legacy: kept so existing ViewModel debug frame callback compiles during transition
+    fun updateDebugFrame() = updatePreviewFrame()
+
+    private fun parseDetectionsJson(json: String): List<SnapshotDetection> {
+        if (json == "{}") return emptyList()
+        return try {
+            val obj = JSONObject(json)
+            val arr = obj.optJSONArray("detections") ?: return emptyList()
+            (0 until arr.length()).map { i ->
+                val d = arr.getJSONObject(i)
+                SnapshotDetection(
+                    label = d.getString("label"),
+                    classId = d.getInt("class_id"),
+                    confidence = d.getDouble("confidence").toFloat(),
+                    bboxX = d.getInt("bbox_x"),
+                    bboxY = d.getInt("bbox_y"),
+                    bboxW = d.getInt("bbox_w"),
+                    bboxH = d.getInt("bbox_h")
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse detections JSON", e)
+            emptyList()
+        }
+    }
+
+    private fun parseGpsJson(json: String): GpsSnapshot? {
+        if (json == "{}") return null
+        return try {
+            val obj = JSONObject(json)
+            GpsSnapshot(
+                lat = obj.getDouble("latitude"),
+                lon = obj.getDouble("longitude"),
+                alt = obj.getDouble("altitude"),
+                accuracy = obj.getDouble("accuracy").toFloat(),
+                hasGps = obj.optBoolean("has_gps", false)
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse GPS JSON", e)
+            null
         }
     }
 

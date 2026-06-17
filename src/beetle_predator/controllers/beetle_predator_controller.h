@@ -5,7 +5,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <unordered_set>
+#include <thread>
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
@@ -50,43 +50,66 @@ class BeetlePredatorController : public SensorDataProvider {
 
   int GetNewDetectionCount() const { return new_detection_count_.load(); }
 
+  // Capture one still frame, run detection, publish results.
+  // Blocks until detection is complete (~300-900 ms). Call from a background thread.
+  void TakeSnapshot();
+
+  // Returns JSON of last snapshot result: {latitude, longitude, altitude, accuracy,
+  // has_gps, detections:[{label,class_id,confidence,bbox_x,bbox_y,bbox_w,bbox_h}]}
+  // Returns "{}" if no snapshot has been taken yet.
+  std::string GetLastDetectionsJson() const;
+
  private:
   RosInterface& ros_;
   CameraController* rear_camera_;
   GpsLocationProvider* gps_provider_;
   bool enabled_ = false;
 
-  // ML pipeline
+  // ML pipeline (snapshot mode: YOLO only, no Deep SORT)
   std::string models_path_;
   std::unique_ptr<perception::ObjectDetectionController> detector_;
 
   // ROS publisher
   Publisher<vermin_collector_ros_msgs::msg::BeetleDetection> detection_pub_;
 
-  // Processing timer (1 Hz - matches ~900ms inference time)
-  rclcpp::TimerBase::SharedPtr timer_;
-  static constexpr int kFrequencyHz = 1;
-
   // Label filter bitmask (bit 0=beetle, 1=larva, 2=eggs)
-  std::atomic<uint8_t> label_mask_{0x07};  // All enabled by default
-
-  // Novelty filter - only publish new tracks
-  std::unordered_set<int> published_track_ids_;
-  std::mutex novelty_mutex_;
+  std::atomic<uint8_t> label_mask_{0x07};
 
   // Detection counter
   std::atomic<int> new_detection_count_{0};
 
-  // Debug frame storage
-  std::mutex debug_frames_mutex_;
+  // Debug frame storage (keyed by frame_id)
+  mutable std::mutex debug_frames_mutex_;
   std::map<std::string, std::vector<uint8_t>> debug_frames_jpeg_;
   std::atomic<bool> visualization_enabled_{false};
 
-  // Processing state
+  // Snapshot processing guard
   std::atomic<bool> processing_{false};
 
-  void TimerCallback();
-  void ProcessFrame();
+  // Live viewfinder preview thread (10 Hz raw camera frames)
+  std::thread preview_thread_;
+  std::atomic<bool> preview_running_{false};
+
+  // Last snapshot result
+  struct SnapshotEntry {
+    std::string label;
+    int class_id;
+    float confidence;
+    int bbox_x, bbox_y, bbox_w, bbox_h;
+  };
+  struct SnapshotResult {
+    double lat = 0.0, lon = 0.0, alt = 0.0;
+    float accuracy = -1.0f;
+    bool has_gps = false;
+    std::vector<SnapshotEntry> detections;
+  };
+  SnapshotResult last_snapshot_;
+  mutable std::mutex snapshot_mutex_;
+
+  void StartPreviewThread();
+  void StopPreviewThread();
+  void EncodeAndPostFrame(const std::vector<uint8_t>& bgr_data, int width, int height,
+                          const std::string& frame_id);
 };
 
 }  // namespace ros2_android

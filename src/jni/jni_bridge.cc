@@ -1905,4 +1905,88 @@ extern "C"
     return g_app->beetle_predator_controller_->GetNewDetectionCount();
   }
 
+  JNIEXPORT void JNICALL
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_takeBeetlePredatorSnapshot(
+      JNIEnv * /*env*/, jclass /*clazz*/)
+  {
+    if (!g_app || !g_app->beetle_predator_controller_)
+    {
+      LOGE("takeBeetlePredatorSnapshot: controller not initialized");
+      return;
+    }
+    g_app->beetle_predator_controller_->TakeSnapshot();
+  }
+
+  JNIEXPORT jstring JNICALL
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_getBeetlePredatorLastDetections(
+      JNIEnv *env, jclass /*clazz*/)
+  {
+    if (!g_app || !g_app->beetle_predator_controller_)
+    {
+      return env->NewStringUTF("{}");
+    }
+    std::string json = g_app->beetle_predator_controller_->GetLastDetectionsJson();
+    return env->NewStringUTF(json.c_str());
+  }
+
+  JNIEXPORT jobject JNICALL
+  Java_com_github_mowerick_ros2_android_util_NativeBridge_getBeetlePredatorSnapshotFrame(
+      JNIEnv *env, jclass /*clazz*/)
+  {
+    if (!g_app || !g_app->beetle_predator_controller_)
+    {
+      return nullptr;
+    }
+
+    std::vector<uint8_t> jpeg_data;
+    if (!g_app->beetle_predator_controller_->GetDebugFrame("beetle_predator_snapshot", jpeg_data))
+    {
+      return nullptr;
+    }
+
+    if (jpeg_data.empty())
+    {
+      return nullptr;
+    }
+
+    tjhandle decompressor = tjInitDecompress();
+    if (!decompressor)
+    {
+      LOGE("getBeetlePredatorSnapshotFrame: Failed to init TurboJPEG");
+      return nullptr;
+    }
+
+    int width, height, jpegSubsamp, jpegColorspace;
+    int tj_result = tjDecompressHeader3(
+        decompressor,
+        jpeg_data.data(),
+        jpeg_data.size(),
+        &width, &height,
+        &jpegSubsamp, &jpegColorspace);
+
+    if (tj_result != 0)
+    {
+      tjDestroy(decompressor);
+      return nullptr;
+    }
+
+    std::vector<uint8_t> rgba_buffer(width * height * 4);
+    tj_result = tjDecompress2(
+        decompressor,
+        jpeg_data.data(),
+        jpeg_data.size(),
+        rgba_buffer.data(),
+        width, 0, height,
+        TJPF_RGBA, TJFLAG_FASTDCT);
+
+    tjDestroy(decompressor);
+
+    if (tj_result != 0)
+    {
+      return nullptr;
+    }
+
+    return ros2_android::jni::CreateBitmapFromRGB(env, rgba_buffer.data(), width, height);
+  }
+
 } // extern "C"

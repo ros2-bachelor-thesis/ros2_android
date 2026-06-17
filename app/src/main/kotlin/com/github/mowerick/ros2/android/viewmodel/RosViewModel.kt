@@ -117,7 +117,8 @@ class RosViewModel(
     val perceptionState: StateFlow<PerceptionManager.PerceptionState> = perceptionManager.perceptionState
     val debugFrameRgb: StateFlow<Bitmap?> = perceptionManager.debugFrameRgb
     val beetlePredatorState: StateFlow<BeetlePredatorManager.BeetlePredatorState> = beetlePredatorManager.state
-    val beetlePredatorDebugFrame: StateFlow<Bitmap?> = beetlePredatorManager.debugFrame
+    val beetlePredatorDebugFrame: StateFlow<Bitmap?> = beetlePredatorManager.previewFrame
+    val beetlePredatorSnapshotFrame: StateFlow<Bitmap?> = beetlePredatorManager.snapshotFrame
 
     init {
         // Initialize USB Serial manager for LIDAR communication
@@ -158,8 +159,11 @@ class RosViewModel(
                      currentScreen is Screen.DebugVisualizationFullscreen) {
                     perceptionManager.updateDebugFrame(frameId)
                 }
-                if (currentScreen is Screen.BeetlePredator && frameId == "beetle_predator_rgb") {
-                    beetlePredatorManager.updateDebugFrame()
+                if (currentScreen is Screen.BeetlePredator) {
+                    when (frameId) {
+                        "beetle_predator_rgb" -> beetlePredatorManager.updatePreviewFrame()
+                        "beetle_predator_snapshot" -> beetlePredatorManager.updateSnapshotResult()
+                    }
                 }
             }
         }
@@ -365,6 +369,8 @@ class RosViewModel(
     fun enableBeetlePredator() = beetlePredatorManager.enable()
     fun disableBeetlePredator() = beetlePredatorManager.disable()
     fun toggleBeetlePredatorLabel(label: String) = beetlePredatorManager.toggleLabel(label)
+    fun takeBeetlePredatorSnapshot() = beetlePredatorManager.takeSnapshot()
+    fun retakeBeetlePredator() = beetlePredatorManager.retake()
 
     override fun onCleared() {
         super.onCleared()

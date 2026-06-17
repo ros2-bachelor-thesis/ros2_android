@@ -259,6 +259,7 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                 val debugFrameRgb by vm.debugFrameRgb.collectAsState()
                 val beetlePredatorState by vm.beetlePredatorState.collectAsState()
                 val beetlePredatorDebugFrame by vm.beetlePredatorDebugFrame.collectAsState()
+                val beetlePredatorSnapshotFrame by vm.beetlePredatorSnapshotFrame.collectAsState()
 
                 // Handle orientation and immersive mode based on screen
                 LaunchedEffect(screen) {
@@ -418,11 +419,14 @@ class MainActivity : ComponentActivity(), PermissionHandler, NetworkInterfacePro
                     is Screen.BeetlePredator -> {
                         BeetlePredatorScreen(
                             state = beetlePredatorState,
-                            debugFrame = beetlePredatorDebugFrame,
+                            previewFrame = beetlePredatorDebugFrame,
+                            snapshotFrame = beetlePredatorSnapshotFrame,
                             onBack = { vm.navigateBack() },
                             onEnable = { vm.enableBeetlePredator() },
                             onDisable = { vm.disableBeetlePredator() },
-                            onToggleLabel = { label -> vm.toggleBeetlePredatorLabel(label) }
+                            onToggleLabel = { label -> vm.toggleBeetlePredatorLabel(label) },
+                            onTakeSnapshot = { vm.takeBeetlePredatorSnapshot() },
+                            onRetake = { vm.retakeBeetlePredator() }
                         )
                     }
                 }
