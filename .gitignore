@@ -14,3 +14,5 @@ __pycache__/
 
 # Model assets (not open-sourced yet)
 app/src/main/assets/
+scripts/model_conversion/models
+scripts/model_conversion/output

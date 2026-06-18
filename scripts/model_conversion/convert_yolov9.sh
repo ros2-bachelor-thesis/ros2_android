@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Convert yolov9_s_pobed.pt (PyTorch) to NCNN format for Android ARM inference.
+# Convert YOLOv9 DualDDetect model (.pt) to NCNN format for Android ARM inference.
 #
 # Pipeline:
-#   yolov9_s_pobed.pt
-#     -> export.py --include torchscript --imgsz 352 640 --device cpu
-#     -> pnnx inputshape=[1,3,352,640]f32
-#     -> sed (fix Input layer shape annotation)
-#     -> ncnnoptimize 65536 (FP16 storage)
+#   weights.pt
+#     -> export_yolov9_patched.py (patches CBFuse + DualDDetect, traces to TorchScript)
+#     -> pnnx inputshape=[1,3,352,640]f32 fp16=1  (PNNX emits FP16 NCNN bin directly)
+#     -> sed (add Input layer shape annotation)
 #     -> yolov9_s_pobed.ncnn.{param,bin}
+#
+# Note: ncnnoptimize is NOT used. PNNX with fp16=1 emits FP16 weights directly.
+# ncnnoptimize segfaults on this model due to a shape-inference bug in ncnn 20260113.
 
 set -euo pipefail
 
@@ -15,12 +17,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") --yolov9-repo <path> [--model <path>] [--output-dir <path>]
+Usage: $(basename "$0") --yolov9-repo <path> [--model <path>] [--output-dir <path>] [--imgsz <H> <W>]
 
   --yolov9-repo <path>   Path to cloned Vermin_Collector_ROS2_3D_Object_Detection repo.
-                         export.py is read from <path>/object_detection/object_detection/export.py
-  --model <path>         Path to yolov9_s_pobed.pt  (default: models/yolov9_s_pobed.pt)
+  --model <path>         Path to .pt weights file  (default: models/yolov9_s_pobed.pt)
   --output-dir <path>    Directory for output files  (default: output/)
+  --imgsz <H> <W>        Input image size height width  (default: 352 640)
   -h, --help             Show this help message
 EOF
 }
@@ -29,6 +31,8 @@ EOF
 MODEL_PATH="$SCRIPT_DIR/models/yolov9_s_pobed.pt"
 OUTPUT_DIR="$SCRIPT_DIR/output"
 YOLOV9_REPO=""
+IMGSZ_H=352
+IMGSZ_W=640
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -39,6 +43,8 @@ while [[ $# -gt 0 ]]; do
             MODEL_PATH="$2"; shift 2 ;;
         --output-dir)
             OUTPUT_DIR="$2"; shift 2 ;;
+        --imgsz)
+            IMGSZ_H="$2"; IMGSZ_W="$3"; shift 3 ;;
         -h|--help)
             usage; exit 0 ;;
         *)
@@ -53,10 +59,10 @@ if [[ -z "$YOLOV9_REPO" ]]; then
     exit 1
 fi
 
-EXPORT_PY="$YOLOV9_REPO/object_detection/object_detection/export.py"
+PATCHED_EXPORT="$SCRIPT_DIR/export_yolov9_patched.py"
 
 # Check required tools
-for tool in python3 pnnx ncnnoptimize; do
+for tool in python3 pnnx; do
     if ! command -v "$tool" &>/dev/null; then
         echo "Error: '$tool' not found on PATH. See README.md for installation instructions." >&2
         exit 1
@@ -69,13 +75,15 @@ if [[ ! -f "$MODEL_PATH" ]]; then
     exit 1
 fi
 
-if [[ ! -f "$EXPORT_PY" ]]; then
-    echo "Error: export.py not found at: $EXPORT_PY" >&2
-    echo "  Make sure --yolov9-repo points to the Vermin_Collector_ROS2_3D_Object_Detection repo." >&2
+if [[ ! -f "$PATCHED_EXPORT" ]]; then
+    echo "Error: export_yolov9_patched.py not found at: $PATCHED_EXPORT" >&2
     exit 1
 fi
 
 mkdir -p "$OUTPUT_DIR"
+OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
+
+MODEL_STEM="$(basename "$MODEL_PATH" .pt)"
 
 # Create temp working directory, cleaned up on exit
 WORKDIR="$(mktemp -d)"
@@ -83,7 +91,7 @@ trap 'rm -rf "$WORKDIR"' EXIT
 
 echo "==> Working directory: $WORKDIR"
 echo "==> Model: $MODEL_PATH"
-echo "==> export.py: $EXPORT_PY"
+echo "==> Input size: ${IMGSZ_H}x${IMGSZ_W}"
 echo "==> Output: $OUTPUT_DIR"
 echo ""
 
@@ -91,17 +99,20 @@ cp "$MODEL_PATH" "$WORKDIR/weights.pt"
 
 cd "$WORKDIR"
 
-echo "==> Step 1/4: Exporting PyTorch model to TorchScript..."
-python3 "$EXPORT_PY" --weights "$WORKDIR/weights.pt" --include torchscript --imgsz 352 640 --device cpu
+echo "==> Step 1/3: Exporting to TorchScript (patching CBFuse + DualDDetect)..."
+python3 "$PATCHED_EXPORT" \
+    --weights weights.pt \
+    --yolov9-repo "$YOLOV9_REPO" \
+    --imgsz "$IMGSZ_H" "$IMGSZ_W"
 
 if [[ ! -f weights.torchscript ]]; then
-    echo "Error: weights.torchscript was not produced by export.py" >&2
+    echo "Error: weights.torchscript was not produced" >&2
     exit 1
 fi
 
 echo ""
-echo "==> Step 2/4: Converting TorchScript to NCNN via PNNX..."
-pnnx weights.torchscript "inputshape=[1,3,352,640]f32"
+echo "==> Step 2/3: Converting TorchScript to NCNN via PNNX (fp16=1)..."
+pnnx weights.torchscript "inputshape=[1,3,${IMGSZ_H},${IMGSZ_W}]f32" fp16=1
 
 if [[ ! -f weights.ncnn.param ]]; then
     echo "Error: weights.ncnn.param was not produced by pnnx" >&2
@@ -109,19 +120,13 @@ if [[ ! -f weights.ncnn.param ]]; then
 fi
 
 echo ""
-echo "==> Step 3/4: Patching Input layer shape annotation..."
-# The generated param omits the shape annotation on the Input layer; add it explicitly
-# so the NCNN C++ inference code can read the correct H/W/C dimensions.
-sed -i 's/^\(Input\s*in0\s*0 1 in0\)$/\1 0=640 1=352 2=3/' weights.ncnn.param
+echo "==> Step 3/3: Adding Input layer shape annotation..."
+sed -i "s/^\\(Input\\s*in0\\s*0 1 in0\\)\$/\\1 0=${IMGSZ_W} 1=${IMGSZ_H} 2=3/" weights.ncnn.param
 
-echo ""
-echo "==> Step 4/4: Optimizing with ncnnoptimize (FP16 storage, flag 65536)..."
-ncnnoptimize weights.ncnn.param weights.ncnn.bin weights.opt.ncnn.param weights.opt.ncnn.bin 65536
-
-cp weights.opt.ncnn.param "$OUTPUT_DIR/yolov9_s_pobed.ncnn.param"
-cp weights.opt.ncnn.bin   "$OUTPUT_DIR/yolov9_s_pobed.ncnn.bin"
+cp weights.ncnn.param "$OUTPUT_DIR/${MODEL_STEM}.ncnn.param"
+cp weights.ncnn.bin   "$OUTPUT_DIR/${MODEL_STEM}.ncnn.bin"
 
 echo ""
 echo "Done. Output files:"
-echo "  $OUTPUT_DIR/yolov9_s_pobed.ncnn.param"
-echo "  $OUTPUT_DIR/yolov9_s_pobed.ncnn.bin"
+echo "  $OUTPUT_DIR/${MODEL_STEM}.ncnn.param"
+echo "  $OUTPUT_DIR/${MODEL_STEM}.ncnn.bin"
