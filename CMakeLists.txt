@@ -61,6 +61,7 @@ ExternalProject_Add(ros_for_android
   deps-std_msgs
   deps-sensor_msgs
   deps-vermin_collector_ros_msgs
+  deps-point_cloud_interfaces
   deps-libyuv
   deps-ros2_android_perception
   deps-micro-xrce-dds-agent

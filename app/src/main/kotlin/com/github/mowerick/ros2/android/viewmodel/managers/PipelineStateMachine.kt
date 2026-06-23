@@ -346,9 +346,9 @@ class PipelineStateMachine(
                 description = "Captures stereo image, depth, point cloud, and IMU data from ZED 2i camera. Runs on external NVIDIA Jetson/PC and streams to Android via DDS.",
                 subscribesTo = emptyList(),
                 publishesTo = listOf(
-                    TopicInfo("/zed/zed_node/rgb/image_rect_color/compressed", "sensor_msgs/msg/CompressedImage"),
-                    TopicInfo("/zed/zed_node/depth/depth_registered", "sensor_msgs/msg/Image"),
-                    TopicInfo("/zed/zed_node/point_cloud/cloud_registered", "sensor_msgs/msg/PointCloud2"),
+                    TopicInfo("/zed/zed_node/rgb/color/rect/image/compressed", "sensor_msgs/msg/CompressedImage"),
+                    TopicInfo("/zed/zed_node/depth/depth_registered/compressedDepth", "sensor_msgs/msg/CompressedImage"),
+                    TopicInfo("/zed/zed_node/point_cloud/cloud_registered/zlib", "point_cloud_interfaces/msg/CompressedPointCloud2"),
                     TopicInfo("/zed/zed_node/imu/data", "sensor_msgs/msg/Imu")
                 ),
                 upstreamNodeId = null,
@@ -359,9 +359,9 @@ class PipelineStateMachine(
                 name = "3D Object Detection",
                 description = "Runs 3D Object Detection and Deep SORT to detect and track Colorado Potato Beetle life stages (beetle, larva, eggs) in 3D space using ZED camera data.",
                 subscribesTo = listOf(
-                    TopicInfo("/zed/zed_node/rgb/image_rect_color/compressed", "sensor_msgs/msg/CompressedImage"),
-                    TopicInfo("/zed/zed_node/depth/depth_registered", "sensor_msgs/msg/Image"),
-                    TopicInfo("/zed/zed_node/point_cloud/cloud_registered", "sensor_msgs/msg/PointCloud2")
+                    TopicInfo("/zed/zed_node/rgb/color/rect/image/compressed", "sensor_msgs/msg/CompressedImage"),
+                    TopicInfo("/zed/zed_node/depth/depth_registered/compressedDepth", "sensor_msgs/msg/CompressedImage"),
+                    TopicInfo("/zed/zed_node/point_cloud/cloud_registered/zlib", "point_cloud_interfaces/msg/CompressedPointCloud2")
                 ),
                 publishesTo = listOf(
                     TopicInfo("/cpb_beetle_center", "geometry_msgs/msg/Point"),

@@ -13,6 +13,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <geometry_msgs/msg/point.hpp>
+#include <point_cloud_interfaces/msg/compressed_point_cloud2.hpp>
 #include <sensor_msgs/msg/compressed_image.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -146,8 +147,8 @@ class PerceptionController : public SensorDataProvider {
 
   // Subscriptions (from external ZED camera device)
   rclcpp::Subscription<sensor_msgs::msg::CompressedImage>::SharedPtr rgb_sub_;
-  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr depth_sub_;
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::CompressedImage>::SharedPtr depth_sub_;
+  rclcpp::Subscription<point_cloud_interfaces::msg::CompressedPointCloud2>::SharedPtr cloud_sub_;
 
   // Publishers (6 topics: 3 classes × 2 types)
   Publisher<geometry_msgs::msg::Point> pub_beetle_center_;
@@ -181,14 +182,14 @@ class PerceptionController : public SensorDataProvider {
   void OnRGB(const sensor_msgs::msg::CompressedImage::SharedPtr msg);
 
   /**
-   * Depth image callback (32FC1 depth map)
+   * Depth image callback (compressedDepth → decoded to 32FC1)
    */
-  void OnDepth(const sensor_msgs::msg::Image::SharedPtr msg);
+  void OnDepth(const sensor_msgs::msg::CompressedImage::SharedPtr msg);
 
   /**
-   * Point cloud callback (PointCloud2)
+   * Point cloud callback (CompressedPointCloud2 zlib → decoded to PointCloud2)
    */
-  void OnPointCloud(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
+  void OnPointCloud(const point_cloud_interfaces::msg::CompressedPointCloud2::SharedPtr msg);
 
   /**
    * Timer callback (20Hz) - triggers inference when camera_rgb_ is ready

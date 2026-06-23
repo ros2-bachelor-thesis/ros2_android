@@ -2,6 +2,7 @@
 
 #include <sstream>
 #include <cmath>
+#include <zlib.h>
 #include <turbojpeg.h>
 
 #include <perception/types.h>
@@ -9,7 +10,9 @@
 #include "core/log.h"
 #include "core/notification_queue.h"
 #include "core/debug_frame_callback_queue.h"
+#include "perception/depth_codec.h"
 
+using ros2_android::DecompressDepth;
 using ros2_android::NotificationSeverity;
 using ros2_android::PerceptionController;
 using ros2_android::Point3f;
@@ -160,17 +163,17 @@ void PerceptionController::Enable()
                  .durability_volatile();
 
   rgb_sub_ = node->create_subscription<sensor_msgs::msg::CompressedImage>(
-      "/zed/zed_node/rgb/image_rect_color/compressed", qos,
+      "/zed/zed_node/rgb/color/rect/image/compressed", qos,
       std::bind(&PerceptionController::OnRGB, this, std::placeholders::_1));
   LOGD("  RGB subscription publisher count: %zu", rgb_sub_->get_publisher_count());
 
-  depth_sub_ = node->create_subscription<sensor_msgs::msg::Image>(
-      "/zed/zed_node/depth/depth_registered", qos,
+  depth_sub_ = node->create_subscription<sensor_msgs::msg::CompressedImage>(
+      "/zed/zed_node/depth/depth_registered/compressedDepth", qos,
       std::bind(&PerceptionController::OnDepth, this, std::placeholders::_1));
   LOGD("  Depth subscription publisher count: %zu", depth_sub_->get_publisher_count());
 
-  cloud_sub_ = node->create_subscription<sensor_msgs::msg::PointCloud2>(
-      "/zed/zed_node/point_cloud/cloud_registered", qos,
+  cloud_sub_ = node->create_subscription<point_cloud_interfaces::msg::CompressedPointCloud2>(
+      "/zed/zed_node/point_cloud/cloud_registered/zlib", qos,
       std::bind(&PerceptionController::OnPointCloud, this, std::placeholders::_1));
   LOGD("  Cloud subscription publisher count: %zu", cloud_sub_->get_publisher_count());
 
@@ -258,29 +261,77 @@ void PerceptionController::OnRGB(
 }
 
 void PerceptionController::OnDepth(
-    const sensor_msgs::msg::Image::SharedPtr msg)
+    const sensor_msgs::msg::CompressedImage::SharedPtr msg)
 {
-  LOGD("OnDepth: Received depth message (%ux%u)", msg->width, msg->height);
-  std::lock_guard<std::mutex> lock(latest_mutex_);
-  latest_depth_ = msg;
+  LOGD("OnDepth: Received compressedDepth message (%zu bytes)", msg->data.size());
+
+  auto decoded = DecompressDepth(*msg);
+  if (!decoded)
+  {
+    LOGW("OnDepth: Failed to decompress depth image");
+    return;
+  }
+
+  uint32_t w, h;
+  {
+    std::lock_guard<std::mutex> lock(latest_mutex_);
+    w = decoded->width;
+    h = decoded->height;
+    latest_depth_ = std::move(decoded);
+  }
 
   if (!camera_depth_)
   {
-    LOGI("First depth message received (%ux%u)", msg->width, msg->height);
+    LOGI("First depth message received (%ux%u)", w, h);
     camera_depth_ = true;
   }
 }
 
 void PerceptionController::OnPointCloud(
-    const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+    const point_cloud_interfaces::msg::CompressedPointCloud2::SharedPtr msg)
 {
-  LOGD("OnPointCloud: Received point cloud message (%ux%u)", msg->width, msg->height);
-  std::lock_guard<std::mutex> lock(latest_mutex_);
-  latest_cloud_ = msg;
+  LOGD("OnPointCloud: Received CompressedPointCloud2 format=%s (%ux%u, %zu bytes compressed)",
+       msg->format.c_str(), msg->width, msg->height, msg->compressed_data.size());
+
+  if (msg->format != "zlib")
+  {
+    LOGW("OnPointCloud: Unexpected format '%s' (expected 'zlib')", msg->format.c_str());
+    return;
+  }
+
+  // Decompress with zlib. Expected size: height * row_step bytes.
+  uLongf decompressed_size = static_cast<uLongf>(msg->height) * msg->row_step;
+  std::vector<uint8_t> decompressed(decompressed_size);
+
+  int z_result = uncompress(decompressed.data(), &decompressed_size,
+                            msg->compressed_data.data(), msg->compressed_data.size());
+  if (z_result != Z_OK)
+  {
+    LOGW("OnPointCloud: zlib uncompress failed: %d", z_result);
+    return;
+  }
+  decompressed.resize(decompressed_size);
+
+  auto cloud = std::make_shared<sensor_msgs::msg::PointCloud2>();
+  cloud->header       = msg->header;
+  cloud->height       = msg->height;
+  cloud->width        = msg->width;
+  cloud->fields       = msg->fields;
+  cloud->is_bigendian = msg->is_bigendian;
+  cloud->point_step   = msg->point_step;
+  cloud->row_step     = msg->row_step;
+  cloud->is_dense     = msg->is_dense;
+  cloud->data         = std::move(decompressed);
+
+  uint32_t cw = cloud->width, ch = cloud->height, ps = cloud->point_step;
+  {
+    std::lock_guard<std::mutex> lock(latest_mutex_);
+    latest_cloud_ = std::move(cloud);
+  }
 
   if (!camera_pointcloud_)
   {
-    LOGI("First cloud message received (%ux%u)", msg->width, msg->height);
+    LOGI("First cloud message received (%ux%u, point_step=%u)", cw, ch, ps);
     camera_pointcloud_ = true;
   }
 }
