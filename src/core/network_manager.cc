@@ -115,10 +115,10 @@ bool NetworkManager::WriteConfigFile(
   config_file << "      <Watermarks>\n";
   config_file << "        <WhcLow>1MB</WhcLow>\n";
   config_file << "        <WhcHighInit>1MB</WhcHighInit>\n";
-  config_file << "        <WhcHigh>64MB</WhcHigh>\n";
+  config_file << "        <WhcHigh>16MB</WhcHigh>\n";
   config_file << "      </Watermarks>\n";
   config_file << "      <SocketReceiveBufferSize/>\n";
-  config_file << "      <MaxQueuedRexmitBytes>64MB</MaxQueuedRexmitBytes>\n";
+  config_file << "      <MaxQueuedRexmitBytes>4MB</MaxQueuedRexmitBytes>\n";
   config_file << "      <DefragReliableMaxSamples>16</DefragReliableMaxSamples>\n";
   config_file << "      <DefragUnreliableMaxSamples>4</DefragUnreliableMaxSamples>\n";
   config_file << "    </Internal>\n";

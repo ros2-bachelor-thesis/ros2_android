@@ -114,7 +114,11 @@ class PerceptionController : public SensorDataProvider {
   // ============================================================================
 
   /**
-   * Latest messages from ZED topics (no timestamp synchronization)
+   * Latest messages from ZED topics. Pairing strategy: best-effort timestamp
+   * validation in TimerCallback rejects depth/cloud samples whose header
+   * stamp diverges from the RGB stamp by more than the per-stream tolerance
+   * below. RGB is always processed; depth and cloud are nulled out (treated
+   * as missing) when stale, mirroring the Python reference behavior.
    */
   sensor_msgs::msg::CompressedImage::SharedPtr latest_rgb_;
   sensor_msgs::msg::Image::SharedPtr latest_depth_;
@@ -128,6 +132,20 @@ class PerceptionController : public SensorDataProvider {
 
   // Timestamp tracking to prevent infinite message reprocessing
   rclcpp::Time last_processed_rgb_stamp_{0, 0, RCL_ROS_TIME};
+
+  // Per-stream skew tolerance vs RGB header stamp. Depth tolerance accounts
+  // for the publisher-side compression latency in compressed_depth_image_transport
+  // (observed ~400 ms sustained offset between RGB and depth header stamps).
+  // Cloud at 1-2 Hz allows ~1 frame skew.
+  static constexpr int kDepthSkewToleranceMs = 500;
+  static constexpr int kCloudSkewToleranceMs = 600;
+
+  // Counters for stale-pair drops, surfaced via JNI in future work.
+  std::atomic<uint32_t> depth_stale_drops_{0};
+  std::atomic<uint32_t> cloud_stale_drops_{0};
+
+  // Throttle for LOGW emitted when stale pairs are dropped (1 line/sec max).
+  rclcpp::Time last_skew_warn_time_{0, 0, RCL_ROS_TIME};
 
   // Debug frame storage for JNI visualization
   std::mutex debug_frames_mutex_;

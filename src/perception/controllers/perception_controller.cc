@@ -154,26 +154,38 @@ void PerceptionController::Enable()
     return;
   }
 
-  // Reliable QoS required for large messages over WiFi - best_effort disables
-  // RTPS fragment retransmission, so any lost fragment discards the entire
-  // sample (impossible for 33MB PointCloud2 with ~25k fragments). KeepLast(10)
-  // provides buffer depth for concurrent RTPS fragment reassembly.
-  auto qos = rclcpp::QoS(rclcpp::KeepLast(10))
-                 .reliable()
-                 .durability_volatile();
+  // Reliable QoS required for compressed payloads over WiFi - best_effort
+  // disables RTPS fragment retransmission, so any lost fragment discards the
+  // entire sample. Per-stream history sized to bound subscriber-side memory:
+  //   RGB   ~150KB @ 15Hz -> KeepLast(10) = ~1.5MB queue
+  //   Depth ~4MB   @ 15Hz -> KeepLast(3)  = ~12MB queue + Lifespan(200ms)
+  //   Cloud ~3MB   @ 1-2Hz -> KeepLast(2)  = ~6MB queue + Lifespan(500ms)
+  // Lifespan drops stale samples before they pair with fresh RGB (temporal
+  // desync mitigation).
+  auto rgb_qos = rclcpp::QoS(rclcpp::KeepLast(10))
+                     .reliable()
+                     .durability_volatile();
+  auto depth_qos = rclcpp::QoS(rclcpp::KeepLast(3))
+                       .reliable()
+                       .durability_volatile()
+                       .lifespan(std::chrono::milliseconds(200));
+  auto cloud_qos = rclcpp::QoS(rclcpp::KeepLast(2))
+                       .reliable()
+                       .durability_volatile()
+                       .lifespan(std::chrono::milliseconds(500));
 
   rgb_sub_ = node->create_subscription<sensor_msgs::msg::CompressedImage>(
-      "/zed/zed_node/rgb/color/rect/image/compressed", qos,
+      "/zed/zed_node/rgb/color/rect/image/compressed", rgb_qos,
       std::bind(&PerceptionController::OnRGB, this, std::placeholders::_1));
   LOGD("  RGB subscription publisher count: %zu", rgb_sub_->get_publisher_count());
 
   depth_sub_ = node->create_subscription<sensor_msgs::msg::CompressedImage>(
-      "/zed/zed_node/depth/depth_registered/compressedDepth", qos,
+      "/zed/zed_node/depth/depth_registered/compressedDepth", depth_qos,
       std::bind(&PerceptionController::OnDepth, this, std::placeholders::_1));
   LOGD("  Depth subscription publisher count: %zu", depth_sub_->get_publisher_count());
 
   cloud_sub_ = node->create_subscription<point_cloud_interfaces::msg::CompressedPointCloud2>(
-      "/zed/zed_node/point_cloud/cloud_registered/zlib", qos,
+      "/zed/zed_node/point_cloud/cloud_registered/zlib", cloud_qos,
       std::bind(&PerceptionController::OnPointCloud, this, std::placeholders::_1));
   LOGD("  Cloud subscription publisher count: %zu", cloud_sub_->get_publisher_count());
 
@@ -299,29 +311,64 @@ void PerceptionController::OnPointCloud(
     return;
   }
 
-  // Decompress with zlib. Expected size: height * row_step bytes.
-  uLongf decompressed_size = static_cast<uLongf>(msg->height) * msg->row_step;
-  std::vector<uint8_t> decompressed(decompressed_size);
+  // Decompress with inflate. point_cloud_transport/zlib_cpp on the desktop
+  // publisher emits a gzip-wrapped stream (magic 0x1f 0x8b); earlier zlib and
+  // raw-deflate attempts both failed with Z_DATA_ERROR on first byte 0x1f.
+  // windowBits=47 (= 15 + 32) tells zlib to auto-detect both gzip and zlib
+  // wrappers, so this also covers a future publisher switch.
+  const size_t decompressed_size_expected =
+      static_cast<size_t>(msg->height) * msg->row_step;
+  std::vector<uint8_t> decompressed(decompressed_size_expected);
 
-  int z_result = uncompress(decompressed.data(), &decompressed_size,
-                            msg->compressed_data.data(), msg->compressed_data.size());
+  z_stream strm{};
+  strm.next_in = const_cast<Bytef *>(msg->compressed_data.data());
+  strm.avail_in = static_cast<uInt>(msg->compressed_data.size());
+  strm.next_out = decompressed.data();
+  strm.avail_out = static_cast<uInt>(decompressed.size());
+
+  int z_result = inflateInit2(&strm, 15 + 32);
+  if (z_result == Z_OK)
+  {
+    z_result = inflate(&strm, Z_FINISH);
+    if (z_result == Z_STREAM_END)
+    {
+      decompressed.resize(strm.total_out);
+      z_result = Z_OK;
+    }
+    else if (z_result == Z_OK)
+    {
+      z_result = Z_BUF_ERROR;
+    }
+    inflateEnd(&strm);
+  }
+
   if (z_result != Z_OK)
   {
-    LOGW("OnPointCloud: zlib uncompress failed: %d", z_result);
+    LOGW("OnPointCloud: inflate failed: %d (first byte=0x%02x, %zu->%zu expected)",
+         z_result,
+         msg->compressed_data.empty() ? 0 : msg->compressed_data[0],
+         msg->compressed_data.size(), decompressed_size_expected);
     return;
   }
-  decompressed.resize(decompressed_size);
+
+  static bool inflate_logged_once = false;
+  if (!inflate_logged_once)
+  {
+    LOGI("OnPointCloud: inflate OK first byte=0x%02x (gzip/zlib auto), %zu compressed -> %zu raw",
+         msg->compressed_data[0], msg->compressed_data.size(), decompressed.size());
+    inflate_logged_once = true;
+  }
 
   auto cloud = std::make_shared<sensor_msgs::msg::PointCloud2>();
-  cloud->header       = msg->header;
-  cloud->height       = msg->height;
-  cloud->width        = msg->width;
-  cloud->fields       = msg->fields;
+  cloud->header = msg->header;
+  cloud->height = msg->height;
+  cloud->width = msg->width;
+  cloud->fields = msg->fields;
   cloud->is_bigendian = msg->is_bigendian;
-  cloud->point_step   = msg->point_step;
-  cloud->row_step     = msg->row_step;
-  cloud->is_dense     = msg->is_dense;
-  cloud->data         = std::move(decompressed);
+  cloud->point_step = msg->point_step;
+  cloud->row_step = msg->row_step;
+  cloud->is_dense = msg->is_dense;
+  cloud->data = std::move(decompressed);
 
   uint32_t cw = cloud->width, ch = cloud->height, ps = cloud->point_step;
   {
@@ -379,6 +426,57 @@ void PerceptionController::TimerCallback()
 
   // Update timestamp
   last_processed_rgb_stamp_ = rgb->header.stamp;
+
+  // Best-effort temporal sync: drop depth/cloud whose header stamp diverges
+  // from RGB by more than the per-stream tolerance. Stale geometry paired
+  // with fresh RGB produces meter-scale 3D localization errors downstream.
+  // Mirrors Python behavior in degraded path (depth/cloud null -> RGB only).
+  const rclcpp::Time rgb_stamp(rgb->header.stamp, RCL_ROS_TIME);
+  int64_t depth_skew_ms = 0;
+  int64_t cloud_skew_ms = 0;
+  bool depth_dropped = false;
+  bool cloud_dropped = false;
+
+  if (depth)
+  {
+    const rclcpp::Time depth_stamp(depth->header.stamp, RCL_ROS_TIME);
+    depth_skew_ms = std::abs(
+        (rgb_stamp - depth_stamp).nanoseconds() / 1'000'000);
+    if (depth_skew_ms > kDepthSkewToleranceMs)
+    {
+      depth_stale_drops_.fetch_add(1, std::memory_order_relaxed);
+      depth.reset();
+      depth_dropped = true;
+    }
+  }
+
+  if (cloud)
+  {
+    const rclcpp::Time cloud_stamp(cloud->header.stamp, RCL_ROS_TIME);
+    cloud_skew_ms = std::abs(
+        (rgb_stamp - cloud_stamp).nanoseconds() / 1'000'000);
+    if (cloud_skew_ms > kCloudSkewToleranceMs)
+    {
+      cloud_stale_drops_.fetch_add(1, std::memory_order_relaxed);
+      cloud.reset();
+      cloud_dropped = true;
+    }
+  }
+
+  if (depth_dropped || cloud_dropped)
+  {
+    const rclcpp::Time now = ros_.get_node()->now();
+    if ((now - last_skew_warn_time_).nanoseconds() > 1'000'000'000)
+    {
+      LOGW("Temporal sync drop: deth_skew=%lld ms (drop=%d, total=%u), "
+           "cloud_skew=%lld ms (drop=%d, total=%u)",
+           static_cast<long long>(depth_skew_ms), depth_dropped ? 1 : 0,
+           depth_stale_drops_.load(std::memory_order_relaxed),
+           static_cast<long long>(cloud_skew_ms), cloud_dropped ? 1 : 0,
+           cloud_stale_drops_.load(std::memory_order_relaxed));
+      last_skew_warn_time_ = now;
+    }
+  }
 
   // Process frame (depth and cloud are optional, matching Python behavior)
   // Python always processes RGB, conditionally uses depth+cloud
@@ -716,7 +814,8 @@ sensor_msgs::msg::PointCloud2::UniquePtr PerceptionController::CropPointCloud(
   const int depth_row_stride = static_cast<int>(depth.step / sizeof(float));
 
   // Helper: sample depth at a model-space (mx, my) coordinate
-  auto sample_depth = [&](int mx, int my) -> float {
+  auto sample_depth = [&](int mx, int my) -> float
+  {
     int dx = std::min(static_cast<int>(mx * scale_x), static_cast<int>(depth.width) - 1);
     int dy = std::min(static_cast<int>(my * scale_y), static_cast<int>(depth.height) - 1);
     return depth_data[dy * depth_row_stride + dx];
