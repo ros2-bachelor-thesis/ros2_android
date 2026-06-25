@@ -154,25 +154,32 @@ void PerceptionController::Enable()
     return;
   }
 
-  // Reliable QoS required for compressed payloads over WiFi - best_effort
-  // disables RTPS fragment retransmission, so any lost fragment discards the
-  // entire sample. Per-stream history sized to bound subscriber-side memory:
-  //   RGB   ~150KB @ 15Hz -> KeepLast(10) = ~1.5MB queue
-  //   Depth ~4MB   @ 15Hz -> KeepLast(3)  = ~12MB queue + Lifespan(200ms)
-  //   Cloud ~3MB   @ 1-2Hz -> KeepLast(2)  = ~6MB queue + Lifespan(500ms)
-  // Lifespan drops stale samples before they pair with fresh RGB (temporal
-  // desync mitigation).
-  auto rgb_qos = rclcpp::QoS(rclcpp::KeepLast(10))
-                     .reliable()
+  // best_effort QoS for all video streams. reliable() caused RTPS sequence-number
+  // holes: when the executor was slow, the subscriber's receive buffer filled and
+  // old sequence numbers were evicted. The subscriber then NACKed a gap the
+  // publisher had already discarded → subscription permanently stalled. For
+  // high-rate camera streams, best_effort (drop the oldest sample on overflow)
+  // is the correct semantic: we want the latest frame, not every frame.
+  // best_effort also matches the typical ZED node publisher QoS for video topics.
+  //
+  // Fragment retransmission trade-off: best_effort loses any UDP fragment → whole
+  // sample dropped. Acceptable: YOLO skips one frame, picks up the next.
+  //
+  // History sizes bound subscriber-side memory:
+  //   RGB   ~150KB @ 15Hz -> KeepLast(5) = ~750KB
+  //   Depth ~4MB   @ 15Hz -> KeepLast(2) = ~8MB + Lifespan(800ms)
+  //   Cloud ~3MB   @ 1-2Hz -> KeepLast(2) = ~6MB + Lifespan(3500ms)
+  auto rgb_qos = rclcpp::QoS(rclcpp::KeepLast(5))
+                     .best_effort()
                      .durability_volatile();
-  auto depth_qos = rclcpp::QoS(rclcpp::KeepLast(3))
-                       .reliable()
+  auto depth_qos = rclcpp::QoS(rclcpp::KeepLast(2))
+                       .best_effort()
                        .durability_volatile()
-                       .lifespan(std::chrono::milliseconds(200));
+                       .lifespan(std::chrono::milliseconds(800));
   auto cloud_qos = rclcpp::QoS(rclcpp::KeepLast(2))
-                       .reliable()
+                       .best_effort()
                        .durability_volatile()
-                       .lifespan(std::chrono::milliseconds(500));
+                       .lifespan(std::chrono::milliseconds(3500));
 
   rgb_sub_ = node->create_subscription<sensor_msgs::msg::CompressedImage>(
       "/zed/zed_node/rgb/color/rect/image/compressed", rgb_qos,
@@ -207,9 +214,13 @@ void PerceptionController::Enable()
   pub_eggs_center_.Enable();
   pub_eggs_.Enable();
 
+  // Start inference thread (YOLO runs here, not on the executor thread)
+  running_ = true;
+  inference_thread_ = std::thread(&PerceptionController::InferenceLoop, this);
+
   enabled_ = true;
 
-  LOGI("PerceptionController enabled - 20Hz timer active");
+  LOGI("PerceptionController enabled - 20Hz timer, inference thread started");
 }
 
 void PerceptionController::Disable()
@@ -236,6 +247,18 @@ void PerceptionController::Disable()
 
   // Stop timer
   timer_.reset();
+
+  // Stop inference thread
+  {
+    std::lock_guard<std::mutex> lock(pending_mutex_);
+    running_ = false;
+    pending_frame_.reset();
+  }
+  pending_cv_.notify_all();
+  if (inference_thread_.joinable())
+  {
+    inference_thread_.join();
+  }
 
   // Reset flags
   camera_rgb_ = false;
@@ -297,6 +320,7 @@ void PerceptionController::OnDepth(
     LOGI("First depth message received (%ux%u)", w, h);
     camera_depth_ = true;
   }
+  LOGD("OnDepth: done");
 }
 
 void PerceptionController::OnPointCloud(
@@ -385,9 +409,9 @@ void PerceptionController::OnPointCloud(
 
 void PerceptionController::TimerCallback()
 {
-  // Debug: Log timer activity every second
+  // Debug: Log timer activity every ~200ms (4 ticks at 20Hz)
   static int tick_count = 0;
-  if (++tick_count % 20 == 0)
+  if (++tick_count % 4 == 0)
   {
     LOGD("Timer tick #%d: rgb=%d depth=%d cloud=%d",
          tick_count, camera_rgb_.load(), camera_depth_.load(),
@@ -421,7 +445,9 @@ void PerceptionController::TimerCallback()
   // Check timestamp to avoid reprocessing same message (fixes infinite loop)
   if (rgb->header.stamp == last_processed_rgb_stamp_)
   {
-    return; // Already processed this frame
+    LOGD("TimerCallback: same RGB stamp, skip (camera_rgb=%d depth=%d cloud=%d)",
+         camera_rgb_.load(), camera_depth_.load(), camera_pointcloud_.load());
+    return;
   }
 
   // Update timestamp
@@ -478,9 +504,46 @@ void PerceptionController::TimerCallback()
     }
   }
 
-  // Process frame (depth and cloud are optional, matching Python behavior)
-  // Python always processes RGB, conditionally uses depth+cloud
-  ProcessFrame(rgb, depth, cloud);
+  // Post frame to inference thread (drop-if-busy: single-slot queue).
+  // TimerCallback must return quickly to keep the executor thread unblocked
+  // so that OnRGB/OnDepth/OnPointCloud callbacks can fire between frames.
+  {
+    std::lock_guard<std::mutex> lock(pending_mutex_);
+    pending_frame_ = FrameData{rgb, depth, cloud};
+  }
+  pending_cv_.notify_one();
+}
+
+// ============================================================================
+// Inference Thread
+// ============================================================================
+
+void PerceptionController::InferenceLoop()
+{
+  LOGI("InferenceLoop: started");
+  while (true)
+  {
+    FrameData frame;
+    {
+      std::unique_lock<std::mutex> lock(pending_mutex_);
+      // Watchdog: log if no frame arrives within 2 seconds (ZED stopped? executor stuck?)
+      bool got_frame = pending_cv_.wait_for(lock, std::chrono::seconds(2), [this]
+                                            { return pending_frame_.has_value() || !running_; });
+      if (!running_)
+      {
+        break;
+      }
+      if (!got_frame)
+      {
+        LOGW("InferenceLoop: no frame for 2s - ZED stopped or executor stuck?");
+        continue;
+      }
+      frame = std::move(*pending_frame_);
+      pending_frame_.reset();
+    }
+    ProcessFrame(frame.rgb, frame.depth, frame.cloud);
+  }
+  LOGI("InferenceLoop: stopped");
 }
 
 // ============================================================================

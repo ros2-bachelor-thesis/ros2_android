@@ -5,6 +5,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <queue>
 #include <string>
 #include <thread>
@@ -133,12 +134,13 @@ class PerceptionController : public SensorDataProvider {
   // Timestamp tracking to prevent infinite message reprocessing
   rclcpp::Time last_processed_rgb_stamp_{0, 0, RCL_ROS_TIME};
 
-  // Per-stream skew tolerance vs RGB header stamp. Depth tolerance accounts
-  // for the publisher-side compression latency in compressed_depth_image_transport
-  // (observed ~400 ms sustained offset between RGB and depth header stamps).
-  // Cloud at 1-2 Hz allows ~1 frame skew.
-  static constexpr int kDepthSkewToleranceMs = 500;
-  static constexpr int kCloudSkewToleranceMs = 600;
+  // Per-stream skew tolerance vs RGB header stamp.
+  // Depth: ZED compressed_depth_image_transport adds ~400 ms publisher-side
+  // latency; 800 ms gives headroom without pairing grossly stale geometry.
+  // Cloud at 1 Hz: natural lag up to 1000 ms; observed publisher-side offset
+  // up to ~3 s on loaded Jetson. Use 3500 ms to match worst observed skew.
+  static constexpr int kDepthSkewToleranceMs = 800;
+  static constexpr int kCloudSkewToleranceMs = 3500;
 
   // Counters for stale-pair drops, surfaced via JNI in future work.
   std::atomic<uint32_t> depth_stale_drops_{0};
@@ -187,8 +189,20 @@ class PerceptionController : public SensorDataProvider {
   // Inference thread and processing
   // ============================================================================
 
+  struct FrameData {
+    sensor_msgs::msg::CompressedImage::SharedPtr rgb;
+    sensor_msgs::msg::Image::SharedPtr depth;
+    sensor_msgs::msg::PointCloud2::SharedPtr cloud;
+  };
+
   std::thread inference_thread_;
   std::atomic<bool> running_{false};
+
+  // Single-slot pending frame: TimerCallback overwrites if inference is busy.
+  // Avoids executor-thread blocking while keeping queue bounded.
+  std::mutex pending_mutex_;
+  std::condition_variable pending_cv_;
+  std::optional<FrameData> pending_frame_;
 
   // ============================================================================
   // Callback handlers
@@ -210,7 +224,7 @@ class PerceptionController : public SensorDataProvider {
   void OnPointCloud(const point_cloud_interfaces::msg::CompressedPointCloud2::SharedPtr msg);
 
   /**
-   * Timer callback (20Hz) - triggers inference when camera_rgb_ is ready
+   * Timer callback (20Hz) - posts frame to inference_thread_ and returns.
    */
   void TimerCallback();
 
@@ -219,8 +233,12 @@ class PerceptionController : public SensorDataProvider {
   // ============================================================================
 
   /**
+   * Runs on inference_thread_. Waits for pending_frame_, calls ProcessFrame.
+   */
+  void InferenceLoop();
+
+  /**
    * Process one frame (RGB + depth + point cloud)
-   * Called from OnRGB when all 3 messages are available
    */
   void ProcessFrame(
       const sensor_msgs::msg::CompressedImage::SharedPtr& rgb,
