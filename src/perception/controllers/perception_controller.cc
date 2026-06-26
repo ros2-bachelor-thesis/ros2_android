@@ -657,6 +657,18 @@ void PerceptionController::ProcessFrame(
        result.detections.size(), result.tracks.size(),
        elapsed_ms, 1000.0 / elapsed_ms);
 
+  // Validation log: all 2D detections before depth gate (matches Python detections.csv)
+  // Grep with: adb logcat | grep "VALIDATION_2D"
+  for (const auto &det : result.detections)
+  {
+    LOGD("VALIDATION_2D,%d,%d,%d,%d,%.4f,%d,%s,%u,%u",
+         static_cast<int>(det.bbox[0]), static_cast<int>(det.bbox[1]),
+         static_cast<int>(det.bbox[2]), static_cast<int>(det.bbox[3]),
+         det.confidence, det.class_id,
+         (det.class_id == 0 ? "cpb_beetle" : (det.class_id == 1 ? "cpb_larva" : "cpb_eggs")),
+         rgb->header.stamp.sec, rgb->header.stamp.nanosec);
+  }
+
   // =========================================================================
   // Step 4: Publish detections ONLY if depth+cloud available (matches Python)
   // =========================================================================
