@@ -250,43 +250,48 @@ class PerceptionController : public SensorDataProvider {
   // ============================================================================
 
   // Python point cloud indexing parameters (object_detection.py yolov9 branch)
-  // model_input_size = [640, 352] - YOLO input after resize+crop
   // pointcloud_size = [448, 256] - point cloud dimensions
-  static constexpr int kModelInputWidth = 640;
-  static constexpr int kModelInputHeight = 352;
   static constexpr int kPointcloudWidth = 448;
   static constexpr int kPointcloudHeight = 256;
 
   /**
-   * Compute flat point cloud index from model_input_size coordinates.
+   * Compute flat point cloud index from original-image-space coordinates.
    * Replicates Python formula (object_detection.py yolov9 branch lines 311-316):
-   *   x_scaled = floor(x / model_input_size[0] * pointcloud_size[0])
-   *   y_scaled = floor(y / model_input_size[1] * pointcloud_size[1])
+   *   x_scaled = floor(x / img_w * pointcloud_size[0])
+   *   y_scaled = floor(y / img_h * pointcloud_size[1])
    *   idx = x_scaled + y_scaled * pointcloud_size[0]
+   * img_w/img_h are the original image dimensions (bboxes are in original-image space).
    * cloud_w/cloud_h are the actual cloud dimensions (dynamic, not hardcoded).
    */
-  static int GetCloudFlatIndex(int x, int y, int cloud_w, int cloud_h);
+  static int GetCloudFlatIndex(int x, int y, int cloud_w, int cloud_h,
+                                int img_w, int img_h);
 
   /**
    * Get 3D world coordinates from point cloud at bbox center
-   * @param bbox Bounding box in image coordinates
+   * @param bbox Bounding box in original image coordinates
    * @param cloud Point cloud message
+   * @param img_w Original image width (for coordinate normalization)
+   * @param img_h Original image height (for coordinate normalization)
    * @return 3D point (x, y, z) or (NaN, NaN, NaN) if invalid
    */
   Point3f Get3DLocation(const Rect& bbox,
-                        const sensor_msgs::msg::PointCloud2& cloud);
+                        const sensor_msgs::msg::PointCloud2& cloud,
+                        int img_w, int img_h);
 
   /**
    * Crop point cloud to bbox region with depth filtering
-   * @param bbox Bounding box in image coordinates
+   * @param bbox Bounding box in original image coordinates
    * @param cloud Point cloud message
    * @param depth Depth image for outlier filtering (median ±10%)
+   * @param img_w Original image width (for coordinate normalization)
+   * @param img_h Original image height (for coordinate normalization)
    * @return Cropped point cloud (or nullptr if invalid)
    */
   sensor_msgs::msg::PointCloud2::UniquePtr CropPointCloud(
       const Rect& bbox,
       const sensor_msgs::msg::PointCloud2& cloud,
-      const sensor_msgs::msg::Image& depth);
+      const sensor_msgs::msg::Image& depth,
+      int img_w, int img_h);
 
   // ============================================================================
   // Publishing and logging

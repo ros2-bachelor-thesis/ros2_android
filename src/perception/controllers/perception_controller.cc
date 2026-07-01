@@ -26,7 +26,7 @@ namespace
   const char *CLASS_NAMES[] = {"cpb_beetle", "cpb_larva", "cpb_eggs"};
 
   // Inference parameters
-  constexpr float kConfidenceThreshold = 0.5f; // Matches Python line 245
+  constexpr float kConfidenceThreshold = 0.5f; // Matches Python object_detection.py line 257
   constexpr float kIouThreshold = 0.45f;
 
 } // namespace
@@ -686,11 +686,11 @@ void PerceptionController::ProcessFrame(
           static_cast<int>(det.bbox[2] - det.bbox[0]),  // width
           static_cast<int>(det.bbox[3] - det.bbox[1])); // height
 
-      // Get 3D location from point cloud (detections in model_input_size space)
-      Point3f point3d = Get3DLocation(bbox, *cloud);
+      // Get 3D location from point cloud (bboxes in original-image space)
+      Point3f point3d = Get3DLocation(bbox, *cloud, width, height);
 
       // Crop point cloud for this detection (with depth filtering)
-      auto cropped_cloud = CropPointCloud(bbox, *cloud, *depth);
+      auto cropped_cloud = CropPointCloud(bbox, *cloud, *depth, width, height);
 
       // Publish detection result
       PublishDetection(det, point3d, std::move(cropped_cloud), rgb->header);
@@ -780,24 +780,26 @@ void PerceptionController::ProcessFrame(
 //   y_scaled = math.floor(y / model_input_size[1] * pointcloud_size[1])
 //   idx = int(x_scaled + y_scaled * pointcloud_size[0])
 //
-// x, y are in model_input_size space (640x352).
+// x, y are in original-image space (bboxes inverse-letterboxed by NcnnDetector).
+// img_w/img_h replace the old fixed kModelInputWidth/Height constants.
 // ros2_numpy flattens the cloud to 1D, so byte offset = idx * point_step.
-int PerceptionController::GetCloudFlatIndex(int x, int y, int cloud_w, int cloud_h)
+int PerceptionController::GetCloudFlatIndex(int x, int y, int cloud_w, int cloud_h,
+                                             int img_w, int img_h)
 {
   int x_scaled = static_cast<int>(
-      static_cast<float>(x) / kModelInputWidth * cloud_w);
+      static_cast<float>(x) / img_w * cloud_w);
   int y_scaled = static_cast<int>(
-      static_cast<float>(y) / kModelInputHeight * cloud_h);
+      static_cast<float>(y) / img_h * cloud_h);
   return x_scaled + y_scaled * cloud_w;
 }
 
 Point3f PerceptionController::Get3DLocation(
     const Rect &bbox,
-    const sensor_msgs::msg::PointCloud2 &cloud)
+    const sensor_msgs::msg::PointCloud2 &cloud,
+    int img_w, int img_h)
 {
 
-  // Bbox center - detections are already in model_input_size space (640x352)
-  // matching Python yolov9 branch (object_detection.py lines 291-292)
+  // Bbox center in original-image space (NcnnDetector inverse-letterboxes coords)
   int x = bbox.x + bbox.width / 2;
   int y = bbox.y + bbox.height / 2;
 
@@ -820,7 +822,7 @@ Point3f PerceptionController::Get3DLocation(
   }
 
   // Python flat index formula (object_detection.py line 330, 340)
-  int flat_idx = GetCloudFlatIndex(x, y, cloud.width, cloud.height);
+  int flat_idx = GetCloudFlatIndex(x, y, cloud.width, cloud.height, img_w, img_h);
   size_t byte_offset = static_cast<size_t>(flat_idx) * cloud.point_step;
 
   if (byte_offset + z_offset + sizeof(float) > cloud.data.size())
@@ -855,7 +857,8 @@ Point3f PerceptionController::Get3DLocation(
 sensor_msgs::msg::PointCloud2::UniquePtr PerceptionController::CropPointCloud(
     const Rect &bbox,
     const sensor_msgs::msg::PointCloud2 &cloud,
-    const sensor_msgs::msg::Image &depth)
+    const sensor_msgs::msg::Image &depth,
+    int img_w, int img_h)
 {
   auto cropped = std::make_unique<sensor_msgs::msg::PointCloud2>();
   cropped->header = cloud.header;
@@ -864,17 +867,15 @@ sensor_msgs::msg::PointCloud2::UniquePtr PerceptionController::CropPointCloud(
   cropped->point_step = cloud.point_step;
   cropped->is_dense = false;
 
-  // Bbox is in model_input_size space (640x352).
-  // Depth image may be a different resolution (e.g. 1920x1080) - scale coords when
-  // accessing the depth buffer, but keep the loop in model space so that
-  // GetCloudFlatIndex (which also expects model-space coords) stays correct.
-  float scale_x = static_cast<float>(depth.width) / kModelInputWidth;
-  float scale_y = static_cast<float>(depth.height) / kModelInputHeight;
+  // Bbox is in original-image space (NcnnDetector inverse-letterboxes coords).
+  // Depth image may be a different resolution - scale coords when accessing depth.
+  float scale_x = static_cast<float>(depth.width) / img_w;
+  float scale_y = static_cast<float>(depth.height) / img_h;
 
   int x1 = std::max(0, bbox.x);
   int y1 = std::max(0, bbox.y);
-  int x2 = std::min(kModelInputWidth, bbox.x + bbox.width);
-  int y2 = std::min(kModelInputHeight, bbox.y + bbox.height);
+  int x2 = std::min(img_w, bbox.x + bbox.width);
+  int y2 = std::min(img_h, bbox.y + bbox.height);
 
   int crop_width = x2 - x1;
   int crop_height = y2 - y1;
@@ -970,9 +971,8 @@ sensor_msgs::msg::PointCloud2::UniquePtr PerceptionController::CropPointCloud(
       if (!std::isfinite(pixel_depth) || pixel_depth > 5.0f)
         continue;
 
-      // Use Python flat index formula directly (object_detection.py yolov9 lines 311-316)
-      // x, y are in model_input_size space; scale to actual cloud dimensions
-      int flat_idx = GetCloudFlatIndex(x, y, cloud.width, cloud.height);
+      // Use Python flat index formula: x,y in original-image space → cloud index
+      int flat_idx = GetCloudFlatIndex(x, y, cloud.width, cloud.height, img_w, img_h);
       size_t src_index = static_cast<size_t>(flat_idx) * cloud.point_step;
 
       // Check if point cloud point is valid
